@@ -9,6 +9,22 @@ const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
 
+    const users = mongoose.connection.collection("users");
+    const emailCleanup = await users.updateMany(
+      { email: null },
+      { $unset: { email: 1 } }
+    );
+    const userIdCleanup = await users.updateMany(
+      { userId: null },
+      { $unset: { userId: 1 } }
+    );
+
+    if (emailCleanup.modifiedCount || userIdCleanup.modifiedCount) {
+      console.log(
+        `Cleaned nullable unique fields: email=${emailCleanup.modifiedCount}, userId=${userIdCleanup.modifiedCount}`
+      );
+    }
+
     console.log("MongoDB Connected");
   } catch (error) {
     console.error("MongoDB connection failed:", error.message);

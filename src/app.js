@@ -3,16 +3,38 @@ import cors from "cors";
 import helmet from "helmet";
 
 import indexRoutes from "./routes/indexRoutes.js";
+import { apiLimiter } from "./middleware/rateLimiter.js";
+import { errorHandler, notFound } from "./middleware/errorMiddleware.js";
+import { success } from "./utils/apiResponse.js";
 
 const app = express();
 
-app.use(express.json());
-app.use(cors());
-app.use(helmet());
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
+  : ["http://localhost:3000", "http://localhost:8081", "http://localhost:8082"];
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
+    credentials: true,
+  })
+);
+app.use(helmet());
+app.use(express.json({ limit: "10mb" }));
+app.use(apiLimiter);
+
+app.get("/health", (_req, res) =>
+  success(res, "Server is healthy", { status: "ok" })
+);
+
 app.use("/api/v1", indexRoutes);
+
+app.use(notFound);
+app.use(errorHandler);
 
 export default app;
