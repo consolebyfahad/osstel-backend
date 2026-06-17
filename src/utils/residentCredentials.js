@@ -1,46 +1,18 @@
+import crypto from "crypto";
 import User from "../models/User.js";
 
-const PASSWORD_WORDS = [
-  "apple",
-  "river",
-  "house",
-  "blue",
-  "moon",
-  "star",
-  "tree",
-  "cloud",
-  "happy",
-  "light",
-  "green",
-  "stone",
-  "water",
-  "sunny",
-  "peace",
-  "sweet",
-  "brave",
-  "clear",
-  "fresh",
-  "quiet",
-  "lucky",
-  "smart",
-  "quick",
-  "solid",
-  "warm",
-  "cool",
-  "bright",
-  "calm",
-  "neat",
-  "safe",
-];
+const PASSWORD_LETTERS = "abcdefghijklmnopqrstuvwxyz";
 
-const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
-
-export const generateSixWordPassword = () =>
-  Array.from({ length: 6 }, () => randomItem(PASSWORD_WORDS)).join(" ");
+export const generateResidentPassword = () => {
+  const bytes = crypto.randomBytes(8);
+  return Array.from(bytes, (byte) => PASSWORD_LETTERS[byte % PASSWORD_LETTERS.length]).join(
+    "",
+  );
+};
 
 const generateUserIdCandidate = () => {
   const digits = Math.floor(100000 + Math.random() * 900000);
-  return `VAAS-${digits}`;
+  return String(digits);
 };
 
 export const generateUniqueResidentUserId = async () => {
@@ -54,4 +26,4 @@ export const generateUniqueResidentUserId = async () => {
 };
 
 export const buildCredentialShareMessage = ({ name, userId, password }) =>
-  `Welcome to VAAS${name ? `, ${name}` : ""}!\n\nYour login credentials:\nUser ID: ${userId}\nPassword: ${password}\n\nUse these to login to the resident app.`;
+  `Welcome to OSSTEL${name ? `, ${name}` : ""}!\n\nYour login credentials:\nUser ID: ${userId}\nPassword: ${password}\n\nUse these to login to the resident app.`;

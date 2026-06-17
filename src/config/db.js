@@ -12,16 +12,16 @@ const connectDB = async () => {
     const users = mongoose.connection.collection("users");
     const emailCleanup = await users.updateMany(
       { email: null },
-      { $unset: { email: 1 } }
+      { $unset: { email: 1 } },
     );
     const userIdCleanup = await users.updateMany(
       { userId: null },
-      { $unset: { userId: 1 } }
+      { $unset: { userId: 1 } },
     );
 
     if (emailCleanup.modifiedCount || userIdCleanup.modifiedCount) {
       console.log(
-        `Cleaned nullable unique fields: email=${emailCleanup.modifiedCount}, userId=${userIdCleanup.modifiedCount}`
+        `Cleaned nullable unique fields: email=${emailCleanup.modifiedCount}, userId=${userIdCleanup.modifiedCount}`,
       );
     }
 
@@ -32,13 +32,12 @@ const connectDB = async () => {
     if (error.message.includes("bad auth")) {
       console.error(
         "\nFix: In MongoDB Atlas → Database Access, reset the password for user 'rehmanfahad', then update MONGO_URI in .env.\n" +
-          "URL-encode special characters in the password (@ → %40, < → %3C, > → %3E).\n" +
-          "Example: MONGO_URI=mongodb+srv://USERNAME:ENCODED_PASSWORD@vaas.f2m4bo8.mongodb.net/vaas?appName=vaas"
+          "URL-encode special characters in the password (@ → %40, < → %3C, > → %3E).\n",
       );
     } else if (error.message.includes("ENOTFOUND")) {
       console.error(
         "\nFix: Your MONGO_URI hostname looks wrong — usually caused by an unencoded @ in the password.\n" +
-          "Encode @ as %40 in the password section of the URI."
+          "Encode @ as %40 in the password section of the URI.",
       );
     }
 

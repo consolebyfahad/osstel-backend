@@ -1,6 +1,6 @@
 import {
   buildCredentialShareMessage,
-  generateSixWordPassword,
+  generateResidentPassword,
   generateUniqueResidentUserId,
 } from "./residentCredentials.js";
 import bcrypt from "bcryptjs";
@@ -49,6 +49,8 @@ export const formatResident = (tenancy) => ({
   fatherPhone: tenancy.resident.fatherPhone || null,
   roomNumber: tenancy.room.roomNumber,
   roomId: tenancy.room._id,
+  roomRent: tenancy.room.rent ?? null,
+  monthlyRent: tenancy.monthlyRent ?? null,
   hostelId: tenancy.hostel,
   checkInDate: tenancy.checkInDate,
   createdAt: tenancy.createdAt,
@@ -122,7 +124,7 @@ export const findOrCreateResident = async ({
     return { resident, loginCredentials };
   }
 
-  const plainPassword = generateSixWordPassword();
+  const plainPassword = generateResidentPassword();
   const hashedPassword = await bcrypt.hash(plainPassword, 12);
   const userId = await generateUniqueResidentUserId();
 

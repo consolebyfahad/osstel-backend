@@ -53,8 +53,8 @@ router.post(
     body("userId")
       .optional()
       .trim()
-      .matches(/^VAAS-\d{6}$/i)
-      .withMessage("Valid userId is required"),
+      .matches(/^[a-zA-Z0-9]{4,20}$/)
+      .withMessage("Valid userId is required (4-20 alphanumeric characters)"),
     body("phone")
       .optional()
       .trim()

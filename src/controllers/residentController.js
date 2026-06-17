@@ -13,7 +13,21 @@ import {
   syncRoomStatus,
 } from "../utils/residentHelpers.js";
 import { RESIDENT_PROFILE_FIELDS } from "../utils/validationHelpers.js";
-import { seedRentForNewTenancy } from "../utils/rentHelpers.js";
+import Payment from "../models/Payment.js";
+import { getTenancyMonthlyRent, seedRentForNewTenancy } from "../utils/rentHelpers.js";
+
+const resolveTenancyMonthlyRent = (monthlyRent, roomRent) => {
+  if (monthlyRent === undefined || monthlyRent === null || monthlyRent === "") {
+    return null;
+  }
+
+  const parsed = Number(monthlyRent);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    throw new AppError("monthlyRent must be a non-negative number", 400);
+  }
+
+  return parsed === roomRent ? null : parsed;
+};
 
 export const addResident = asyncHandler(async (req, res) => {
   const {
@@ -22,6 +36,7 @@ export const addResident = asyncHandler(async (req, res) => {
     phone,
     cnic,
     roomNumber,
+    monthlyRent,
     profileImage,
     cnicFront,
     cnicBack,
@@ -87,6 +102,7 @@ export const addResident = asyncHandler(async (req, res) => {
     hostel: hostel._id,
     checkInDate: new Date(),
     status: "active",
+    monthlyRent: resolveTenancyMonthlyRent(monthlyRent, room.rent),
   });
 
   await syncRoomStatus(room._id);
@@ -94,7 +110,7 @@ export const addResident = asyncHandler(async (req, res) => {
 
   const populated = await Tenancy.findById(tenancy._id)
     .populate("resident", RESIDENT_PROFILE_FIELDS)
-    .populate("room", "roomNumber");
+    .populate("room", "roomNumber rent");
 
   return success(
     res,
@@ -131,7 +147,7 @@ export const getResidents = asyncHandler(async (req, res) => {
   const [tenancies, total] = await Promise.all([
     Tenancy.find(filter)
       .populate("resident", RESIDENT_PROFILE_FIELDS)
-      .populate("room", "roomNumber")
+      .populate("room", "roomNumber rent")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -151,6 +167,7 @@ export const updateResident = asyncHandler(async (req, res) => {
     phone,
     cnic,
     roomNumber,
+    monthlyRent,
     profileImage,
     cnicFront,
     cnicBack,
@@ -161,7 +178,7 @@ export const updateResident = asyncHandler(async (req, res) => {
 
   const tenancy = await Tenancy.findById(req.params.id)
     .populate("resident", `${RESIDENT_PROFILE_FIELDS} role`)
-    .populate("room", "roomNumber capacity");
+    .populate("room", "roomNumber capacity rent");
 
   if (!tenancy || tenancy.status !== "active") {
     throw new AppError("Resident not found", 404);
@@ -224,15 +241,36 @@ export const updateResident = asyncHandler(async (req, res) => {
     const oldRoomId = tenancy.room._id;
     tenancy.room = newRoom._id;
     await tenancy.save();
+    await tenancy.populate("room", "roomNumber capacity rent");
     await syncRoomStatus(oldRoomId);
     await syncRoomStatus(newRoom._id);
   }
 
+  if (monthlyRent !== undefined) {
+    tenancy.monthlyRent = resolveTenancyMonthlyRent(
+      monthlyRent,
+      tenancy.room.rent,
+    );
+
+    const now = new Date();
+    await Payment.updateMany(
+      {
+        resident: tenancy.resident._id,
+        room: tenancy.room._id,
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+        status: { $in: ["pending", "rejected"] },
+      },
+      { $set: { amount: getTenancyMonthlyRent(tenancy) } },
+    );
+  }
+
+  await tenancy.save();
   await tenancy.resident.save();
 
   const updated = await Tenancy.findById(tenancy._id)
     .populate("resident", RESIDENT_PROFILE_FIELDS)
-    .populate("room", "roomNumber");
+    .populate("room", "roomNumber rent");
 
   return success(res, "Resident updated successfully", {
     resident: formatResident(updated),

@@ -9,11 +9,13 @@ import rentRoutes from "./rentRoutes.js";
 import residentRoutes from "./residentRoutes.js";
 import supportRoutes from "./supportRoutes.js";
 import userRoutes from "./userRoutes.js";
+import notificationRoutes from "./notificationRoutes.js";
 
 const router = Router();
 
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
+router.use("/notifications", notificationRoutes);
 router.use("/hostels", hostelRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/rent", rentRoutes);

@@ -70,7 +70,11 @@ const buildProfile = async (user) => {
       profile.room = {
         id: tenancy.room._id,
         roomNumber: tenancy.room.roomNumber,
-        rent: tenancy.room.rent,
+        rent:
+          tenancy.monthlyRent != null && tenancy.monthlyRent >= 0
+            ? tenancy.monthlyRent
+            : tenancy.room.rent,
+        defaultRent: tenancy.room.rent,
       };
     }
   }

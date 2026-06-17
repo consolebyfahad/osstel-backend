@@ -4,6 +4,13 @@ import { getManagerHostel } from "./hostelHelpers.js";
 
 export { getManagerHostel };
 
+export const getTenancyMonthlyRent = (tenancy) => {
+  if (tenancy.monthlyRent != null && tenancy.monthlyRent >= 0) {
+    return tenancy.monthlyRent;
+  }
+  return tenancy.room?.rent ?? 0;
+};
+
 export const syncMonthlyRent = async (hostelId, month, year) => {
   const dueDate = new Date(year, month - 1, 1);
 
@@ -28,7 +35,7 @@ export const syncMonthlyRent = async (hostelId, month, year) => {
           resident: tenancy.resident,
           room: tenancy.room._id,
           hostel: hostelId,
-          amount: tenancy.room.rent ?? 0,
+          amount: getTenancyMonthlyRent(tenancy),
           month,
           year,
           dueDate,
@@ -66,7 +73,7 @@ export const ensureResidentRentRecord = async (residentId, month, year) => {
       resident: residentId,
       room: tenancy.room._id,
       hostel: tenancy.hostel._id,
-      amount: tenancy.room.rent ?? 0,
+      amount: getTenancyMonthlyRent(tenancy),
       month,
       year,
       dueDate,
@@ -111,7 +118,8 @@ export const formatTenancyContext = (tenancy) => ({
     ? {
         id: tenancy.room._id,
         roomNumber: tenancy.room.roomNumber,
-        rent: tenancy.room.rent,
+        rent: getTenancyMonthlyRent(tenancy),
+        defaultRent: tenancy.room.rent,
       }
     : null,
 });

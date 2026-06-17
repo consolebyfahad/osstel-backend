@@ -3,6 +3,7 @@ import Tenancy from "../models/Tenancy.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
+import { notifyUser } from "../services/pushNotificationService.js";
 import {
   buildRentSummary,
   buildResidentYearSummary,
@@ -151,6 +152,18 @@ export const submitRentPayment = asyncHandler(async (req, res) => {
     reviewedBy: null,
   });
 
+  if (payment.hostel?.manager) {
+    void notifyUser(payment.hostel.manager, {
+      title: "Rent payment submitted",
+      body: `${payment.resident.name} submitted rent for review`,
+      type: "rent_submitted",
+      data: {
+        paymentId: payment._id.toString(),
+        url: "/rent",
+      },
+    });
+  }
+
   return success(res, "Rent payment submitted for review", { record, rent: record });
 });
 
@@ -169,35 +182,54 @@ export const updateRentStatus = asyncHandler(async (req, res) => {
 });
 
 const applyRentStatusUpdate = async (payment, { status, rejectionReason, reviewedBy }) => {
+  let record;
+
   if (status === "paid" || status === "approved") {
     if (payment.status === "paid") {
       throw new AppError("Payment is already marked paid", 400);
     }
 
-    return updatePaymentStatus(payment, {
+    record = await updatePaymentStatus(payment, {
       status: "paid",
       paidAt: new Date(),
       reviewedAt: new Date(),
       reviewedBy,
       rejectionReason: null,
     });
-  }
-
-  if (status === "rejected") {
+  } else if (status === "rejected") {
     if (payment.status !== "review") {
       throw new AppError("Only payments in review can be rejected", 400);
     }
 
-    return updatePaymentStatus(payment, {
+    record = await updatePaymentStatus(payment, {
       status: "rejected",
       reviewedAt: new Date(),
       reviewedBy,
       rejectionReason: rejectionReason || "Payment rejected by manager",
       paidAt: null,
     });
+  } else {
+    throw new AppError("Invalid status. Use paid, approved, or rejected", 400);
   }
 
-  throw new AppError("Invalid status. Use paid, approved, or rejected", 400);
+  const residentId = payment.resident._id ?? payment.resident;
+  if (record.status === "paid") {
+    void notifyUser(residentId, {
+      title: "Rent approved",
+      body: "Your rent payment has been approved.",
+      type: "rent_approved",
+      data: { paymentId: payment._id.toString(), url: "/rent" },
+    });
+  } else if (record.status === "rejected") {
+    void notifyUser(residentId, {
+      title: "Rent rejected",
+      body: record.rejectionReason || "Your rent payment was rejected.",
+      type: "rent_rejected",
+      data: { paymentId: payment._id.toString(), url: "/rent" },
+    });
+  }
+
+  return record;
 };
 
 export const approveRent = asyncHandler(async (req, res) => {

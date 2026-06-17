@@ -25,7 +25,7 @@ const formatUser = (user) => ({
 
 const findUserForLogin = async ({ phone, userId }) => {
   if (userId) {
-    return User.findOne({ userId: userId.trim().toUpperCase() });
+    return User.findOne({ userId: userId.trim() });
   }
 
   return User.findOne({ phone });
@@ -70,7 +70,7 @@ export const register = asyncHandler(async (req, res) => {
 
 export const login = asyncHandler(async (req, res) => {
   const { phone, userId, password } = req.body;
-  console.log(phone, userId, password);
+
   if (!phone && !userId) {
     throw new AppError("userId or phone is required", 400);
   }

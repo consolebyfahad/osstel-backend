@@ -1,9 +1,11 @@
 import Complaint from "../models/Complaint.js";
+import Hostel from "../models/Hostel.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { getManagerHostel } from "../utils/hostelHelpers.js";
 import { buildPagination, getPagination } from "../utils/pagination.js";
+import { notifyUser } from "../services/pushNotificationService.js";
 
 export const createComplaint = asyncHandler(async (req, res) => {
   const { title, description, hostelId, roomId } = req.body;
@@ -15,6 +17,19 @@ export const createComplaint = asyncHandler(async (req, res) => {
     title,
     description,
   });
+
+  const hostel = await Hostel.findById(hostelId).select("manager name").lean();
+  if (hostel?.manager) {
+    void notifyUser(hostel.manager, {
+      title: "New complaint",
+      body: title,
+      type: "complaint_created",
+      data: {
+        complaintId: complaint._id.toString(),
+        url: "/complaints",
+      },
+    });
+  }
 
   return success(res, "Complaint submitted successfully", { complaint }, 201);
 });
@@ -60,6 +75,16 @@ export const updateComplaintStatus = asyncHandler(async (req, res) => {
 
   complaint.status = status;
   await complaint.save();
+
+  void notifyUser(complaint.resident, {
+    title: "Complaint updated",
+    body: `Your complaint is now ${status.replace(/_/g, " ")}`,
+    type: "complaint_updated",
+    data: {
+      complaintId: complaint._id.toString(),
+      url: "/complaints",
+    },
+  });
 
   return success(res, "Complaint updated successfully", { complaint });
 });

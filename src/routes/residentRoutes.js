@@ -63,6 +63,10 @@ router.post(
       .matches(/^[0-9]{5}-[0-9]{7}-[0-9]$/)
       .withMessage("CNIC must be in format 12345-1234567-1"),
     body("roomNumber").trim().notEmpty().withMessage("Room number is required"),
+    body("monthlyRent")
+      .optional({ values: "null" })
+      .isFloat({ min: 0 })
+      .withMessage("monthlyRent must be a non-negative number"),
     ...residentProfileValidators,
   ],
   validate,
@@ -87,6 +91,10 @@ router.put(
       .trim()
       .notEmpty()
       .withMessage("Room number cannot be empty"),
+    body("monthlyRent")
+      .optional({ values: "null" })
+      .isFloat({ min: 0 })
+      .withMessage("monthlyRent must be a non-negative number"),
     ...residentProfileValidators,
   ],
   validate,
