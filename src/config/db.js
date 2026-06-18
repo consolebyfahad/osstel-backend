@@ -1,4 +1,11 @@
 import mongoose from "mongoose";
+import {
+  getMongoUri,
+  log,
+  logError,
+  logWarn,
+  maskMongoUri,
+} from "../utils/logger.js";
 
 const READY_STATE = {
   0: "disconnected",
@@ -7,7 +14,42 @@ const READY_STATE = {
   3: "disconnecting",
 };
 
+export const logReadyState = (context = "") => {
+  const readyState = mongoose.connection.readyState;
+  const label = READY_STATE[readyState] ?? "unknown";
+  const prefix = context ? `${context}: ` : "";
+  log(`${prefix}readyState=${readyState} (${label})`);
+};
+
+let listenersRegistered = false;
+
+const registerConnectionListeners = () => {
+  if (listenersRegistered) return;
+  listenersRegistered = true;
+  mongoose.connection.on("connected", () => {
+    log("mongoose.connection event: connected");
+    logReadyState("connected event");
+  });
+
+  mongoose.connection.on("disconnected", () => {
+    logWarn("mongoose.connection event: disconnected");
+    logReadyState("disconnected event");
+  });
+
+  mongoose.connection.on("error", (err) => {
+    logError("mongoose.connection event: error", err);
+    logReadyState("error event");
+  });
+
+  mongoose.connection.on("reconnected", () => {
+    log("mongoose.connection event: reconnected");
+    logReadyState("reconnected event");
+  });
+};
+
 export const getDbStatus = async () => {
+  logReadyState("getDbStatus");
+
   const readyState = mongoose.connection.readyState;
   const status = {
     state: READY_STATE[readyState] ?? "unknown",
@@ -24,24 +66,42 @@ export const getDbStatus = async () => {
   status.port = mongoose.connection.port;
 
   try {
+    log("getDbStatus: running admin ping...");
     await mongoose.connection.db.admin().ping();
     status.ping = "ok";
+    log("getDbStatus: admin ping succeeded");
   } catch (err) {
     status.ping = "failed";
     status.pingError = err.message;
+    logError("getDbStatus: admin ping failed", err);
   }
 
   return status;
 };
 
 const connectDB = async () => {
-  if (!process.env.MONGO_URI) {
-    console.error("MONGO_URI is missing. Add it to your .env file.");
+  log("connectDB() called");
+  logReadyState("connectDB entry");
+
+  const mongoUri = getMongoUri();
+
+  if (!mongoUri) {
+    logError(
+      "MongoDB connection aborted: MONGO_URI and MONGODB_URI are both missing",
+    );
     process.exit(1);
   }
 
+  log(`Attempting MongoDB connection to ${maskMongoUri(mongoUri)}`);
+  logReadyState("before mongoose.connect");
+
+  registerConnectionListeners();
+
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(mongoUri);
+
+    log("MongoDB connected successfully");
+    logReadyState("after mongoose.connect");
 
     const users = mongoose.connection.collection("users");
     const emailCleanup = await users.updateMany(
@@ -54,24 +114,25 @@ const connectDB = async () => {
     );
 
     if (emailCleanup.modifiedCount || userIdCleanup.modifiedCount) {
-      console.log(
+      log(
         `Cleaned nullable unique fields: email=${emailCleanup.modifiedCount}, userId=${userIdCleanup.modifiedCount}`,
       );
     }
+  } catch (err) {
+    logError("MongoDB connection failed", err);
+    logReadyState("connectDB catch");
 
-    console.log("MongoDB Connected");
-  } catch (error) {
-    console.error("MongoDB connection failed:", error.message);
-
-    if (error.message.includes("bad auth")) {
-      console.error(
-        "\nFix: In MongoDB Atlas → Database Access, reset the password for user 'rehmanfahad', then update MONGO_URI in .env.\n" +
-          "URL-encode special characters in the password (@ → %40, < → %3C, > → %3E).\n",
+    if (err.message?.includes("bad auth")) {
+      logError(
+        "MongoDB auth failed — verify Atlas username/password and URL-encode special characters in the URI",
       );
-    } else if (error.message.includes("ENOTFOUND")) {
-      console.error(
-        "\nFix: Your MONGO_URI hostname looks wrong — usually caused by an unencoded @ in the password.\n" +
-          "Encode @ as %40 in the password section of the URI.",
+    } else if (err.message?.includes("ENOTFOUND")) {
+      logError(
+        "MongoDB hostname not found — check the cluster hostname and password encoding in the URI",
+      );
+    } else if (err.message?.includes("IP")) {
+      logError(
+        "MongoDB network access blocked — add Vercel IPs or 0.0.0.0/0 in Atlas Network Access",
       );
     }
 
