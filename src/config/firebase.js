@@ -14,7 +14,7 @@ const initFirebase = () => {
   const configuredPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
   const defaultPath = resolve(
     __dirname,
-    "../../osstel-fa11ad-firebase-adminsdk-fbsvc-4d976b8297.json",
+    "../../osstel-fa11ad-firebase-adminsdk-fbsvc-94ef2fd395.json",
   );
 
   let serviceAccount;

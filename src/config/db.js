@@ -1,5 +1,39 @@
 import mongoose from "mongoose";
 
+const READY_STATE = {
+  0: "disconnected",
+  1: "connected",
+  2: "connecting",
+  3: "disconnecting",
+};
+
+export const getDbStatus = async () => {
+  const readyState = mongoose.connection.readyState;
+  const status = {
+    state: READY_STATE[readyState] ?? "unknown",
+    readyState,
+    connected: readyState === 1,
+  };
+
+  if (readyState !== 1 || !mongoose.connection.db) {
+    return status;
+  }
+
+  status.host = mongoose.connection.host;
+  status.name = mongoose.connection.name;
+  status.port = mongoose.connection.port;
+
+  try {
+    await mongoose.connection.db.admin().ping();
+    status.ping = "ok";
+  } catch (err) {
+    status.ping = "failed";
+    status.pingError = err.message;
+  }
+
+  return status;
+};
+
 const connectDB = async () => {
   if (!process.env.MONGO_URI) {
     console.error("MONGO_URI is missing. Add it to your .env file.");
