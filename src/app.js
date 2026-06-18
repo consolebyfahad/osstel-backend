@@ -1,20 +1,16 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import mongoose from "mongoose";
 
 import indexRoutes from "./routes/indexRoutes.js";
 import { apiLimiter } from "./middleware/rateLimiter.js";
 import { errorHandler, notFound } from "./middleware/errorMiddleware.js";
-import { getDbStatus } from "./config/db.js";
+import { ensureDbConnected, getDbStatus } from "./config/db.js";
 import { error, success } from "./utils/apiResponse.js";
-import { log, logError } from "./utils/logger.js";
+import asyncHandler from "./middleware/asyncHandler.js";
 
 const app = express();
-
-app.use((req, _res, next) => {
-  log(`${req.method} ${req.path}`);
-  next();
-});
 
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
@@ -39,27 +35,41 @@ app.get("/health", (_req, res) =>
   success(res, "Server is healthy", { status: "ok" }),
 );
 
-app.get("/health/db", async (_req, res) => {
-  log("GET /health/db — checking database connection");
+app.get(
+  "/health/db",
+  asyncHandler(async (_req, res) => {
+    try {
+      await ensureDbConnected();
+      const dbStatus = await getDbStatus();
 
-  try {
-    const dbStatus = await getDbStatus();
-    log(
-      `GET /health/db — result connected=${dbStatus.connected} ping=${dbStatus.ping ?? "n/a"} readyState=${dbStatus.readyState}`,
-    );
+      if (dbStatus.connected && dbStatus.ping !== "failed") {
+        return success(res, "MongoDB is connected", dbStatus);
+      }
 
-    if (dbStatus.connected && dbStatus.ping !== "failed") {
-      return success(res, "MongoDB is connected", dbStatus);
+      return error(res, "MongoDB is not connected", dbStatus, 503);
+    } catch (err) {
+      return error(
+        res,
+        "MongoDB connection failed",
+        {
+          message: err.message,
+          readyState: mongoose.connection.readyState,
+          runtime: process.env.VERCEL === "1" ? "vercel-serverless" : "node-server",
+        },
+        503,
+      );
     }
+  }),
+);
 
-    return error(res, "MongoDB is not connected", dbStatus, 503);
-  } catch (err) {
-    logError("GET /health/db — unexpected error", err);
-    return error(res, "Database health check failed", { message: err.message }, 500);
-  }
-});
-
-app.use("/api/v1", indexRoutes);
+app.use(
+  "/api/v1",
+  asyncHandler(async (_req, _res, next) => {
+    await ensureDbConnected();
+    next();
+  }),
+  indexRoutes,
+);
 
 app.use(notFound);
 app.use(errorHandler);

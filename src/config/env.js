@@ -1,8 +1,9 @@
-import { getMongoUri, logError } from "../utils/logger.js";
+export const getMongoUri = () =>
+  process.env.MONGO_URI || process.env.MONGODB_URI || "";
 
 const required = ["JWT_SECRET", "JWT_REFRESH_SECRET"];
 
-const validateEnv = () => {
+const validateEnv = ({ exitOnError = true } = {}) => {
   const missing = required.filter((key) => !process.env[key]);
 
   if (!getMongoUri()) {
@@ -10,8 +11,14 @@ const validateEnv = () => {
   }
 
   if (missing.length) {
-    logError(`Missing required environment variables: ${missing.join(", ")}`);
-    process.exit(1);
+    const message = `Missing required environment variables: ${missing.join(", ")}`;
+
+    if (exitOnError) {
+      console.error(message);
+      process.exit(1);
+    }
+
+    throw new Error(message);
   }
 };
 
