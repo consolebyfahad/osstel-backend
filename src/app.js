@@ -22,14 +22,20 @@ app.use(
       return callback(null, false);
     },
     credentials: true,
-  })
+  }),
 );
 app.use(helmet());
 app.use(express.json({ limit: "10mb" }));
 app.use(apiLimiter);
 
+app.get("/", (_req, res) =>
+  success(res, "API is running", {
+    version: "v1",
+  }),
+);
+
 app.get("/health", (_req, res) =>
-  success(res, "Server is healthy", { status: "ok" })
+  success(res, "Server is healthy", { status: "ok" }),
 );
 
 app.use("/api/v1", indexRoutes);
