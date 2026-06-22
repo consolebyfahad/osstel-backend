@@ -4,6 +4,7 @@ import {
   addResident,
   getResidents,
   removeResident,
+  sendResidentRentAlert,
   updateResident,
 } from "../controllers/residentController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
@@ -99,6 +100,23 @@ router.put(
   ],
   validate,
   updateResident
+);
+
+router.post(
+  "/:id/rent-alert",
+  protect,
+  authorize("manager"),
+  validateObjectId("id"),
+  [
+    body("message")
+      .optional({ values: "null" })
+      .trim()
+      .isString()
+      .isLength({ max: 300 })
+      .withMessage("message must be under 300 characters"),
+  ],
+  validate,
+  sendResidentRentAlert
 );
 
 router.delete(

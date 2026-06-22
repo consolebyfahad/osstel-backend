@@ -7,6 +7,7 @@ import {
   getRentCollection,
   markRentPaid,
   rejectRent,
+  sendRentAlert,
   submitRentPayment,
   submitRentForReview,
   updateRentStatus,
@@ -102,6 +103,23 @@ router.patch(
   authorize("manager"),
   validateObjectId("id"),
   markRentPaid
+);
+
+router.post(
+  "/:id/alert",
+  protect,
+  authorize("manager"),
+  validateObjectId("id"),
+  [
+    body("message")
+      .optional({ values: "null" })
+      .trim()
+      .isString()
+      .isLength({ max: 300 })
+      .withMessage("message must be under 300 characters"),
+  ],
+  validate,
+  sendRentAlert
 );
 
 export default router;

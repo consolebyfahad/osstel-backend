@@ -14,7 +14,11 @@ import {
 } from "../utils/residentHelpers.js";
 import { RESIDENT_PROFILE_FIELDS } from "../utils/validationHelpers.js";
 import Payment from "../models/Payment.js";
-import { getTenancyMonthlyRent, seedRentForNewTenancy } from "../utils/rentHelpers.js";
+import { getTenancyMonthlyRent, ensureResidentRentRecord, seedRentForNewTenancy } from "../utils/rentHelpers.js";
+import {
+  buildRentReminderBody,
+  notifyRentReminder,
+} from "../utils/rentNotificationHelpers.js";
 
 const resolveTenancyMonthlyRent = (monthlyRent, roomRent) => {
   if (monthlyRent === undefined || monthlyRent === null || monthlyRent === "") {
@@ -274,6 +278,51 @@ export const updateResident = asyncHandler(async (req, res) => {
 
   return success(res, "Resident updated successfully", {
     resident: formatResident(updated),
+  });
+});
+
+export const sendResidentRentAlert = asyncHandler(async (req, res) => {
+  const tenancy = await Tenancy.findById(req.params.id).populate("room");
+
+  if (!tenancy || tenancy.status !== "active") {
+    throw new AppError("Resident not found", 404);
+  }
+
+  const hostel = await getManagerHostel(tenancy.hostel, req.user._id);
+  if (!hostel) throw new AppError("Not authorized for this hostel", 403);
+
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  const { payment } = await ensureResidentRentRecord(
+    tenancy.resident,
+    month,
+    year,
+  );
+
+  if (!payment) {
+    throw new AppError("No rent record found for this resident", 404);
+  }
+
+  if (!["pending", "rejected"].includes(payment.status)) {
+    throw new AppError(
+      "Rent alert is only available for pending or rejected payments",
+      400,
+    );
+  }
+
+  const customMessage = req.body.message?.trim();
+
+  await notifyRentReminder(tenancy.resident, payment, {
+    type: "rent_alert_manual",
+    title: "Rent payment reminder",
+    body:
+      customMessage ||
+      buildRentReminderBody(payment.month, payment.year, payment.amount),
+  });
+
+  return success(res, "Rent alert sent successfully", {
+    paymentId: payment._id.toString(),
   });
 });
 

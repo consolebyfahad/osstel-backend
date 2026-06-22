@@ -1,26 +1,39 @@
 import Complaint from "../models/Complaint.js";
-import Hostel from "../models/Hostel.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { getManagerHostel } from "../utils/hostelHelpers.js";
 import { buildPagination, getPagination } from "../utils/pagination.js";
 import { notifyUser } from "../services/pushNotificationService.js";
+import {
+  formatComplaint,
+  formatComplaints,
+  getActiveTenancy,
+} from "../utils/complaintHelpers.js";
 
 export const createComplaint = asyncHandler(async (req, res) => {
-  const { title, description, hostelId, roomId } = req.body;
+  const { title, description } = req.body;
+
+  const tenancy = await getActiveTenancy(req.user._id);
+  if (!tenancy) {
+    throw new AppError("No active hostel tenancy found", 400);
+  }
 
   const complaint = await Complaint.create({
     resident: req.user._id,
-    hostel: hostelId,
-    room: roomId || null,
+    hostel: tenancy.hostel._id,
+    room: tenancy.room?._id ?? null,
     title,
     description,
   });
 
-  const hostel = await Hostel.findById(hostelId).select("manager name").lean();
-  if (hostel?.manager) {
-    void notifyUser(hostel.manager, {
+  const populated = await Complaint.findById(complaint._id)
+    .populate("hostel", "name manager")
+    .populate("room", "roomNumber")
+    .lean();
+
+  if (tenancy.hostel?.manager) {
+    void notifyUser(tenancy.hostel.manager, {
       title: "New complaint",
       body: title,
       type: "complaint_created",
@@ -31,7 +44,36 @@ export const createComplaint = asyncHandler(async (req, res) => {
     });
   }
 
-  return success(res, "Complaint submitted successfully", { complaint }, 201);
+  return success(
+    res,
+    "Complaint submitted successfully",
+    { complaint: formatComplaint(populated) },
+    201,
+  );
+});
+
+export const getMyComplaints = asyncHandler(async (req, res) => {
+  const { status } = req.query;
+  const { page, limit, skip } = getPagination(req.query);
+
+  const filter = { resident: req.user._id };
+  if (status) filter.status = status;
+
+  const [complaints, total] = await Promise.all([
+    Complaint.find(filter)
+      .populate("hostel", "name")
+      .populate("room", "roomNumber")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Complaint.countDocuments(filter),
+  ]);
+
+  return success(res, "Your complaints fetched successfully", {
+    complaints: formatComplaints(complaints),
+    pagination: buildPagination(total, page, limit),
+  });
 });
 
 export const getComplaints = asyncHandler(async (req, res) => {
@@ -58,7 +100,7 @@ export const getComplaints = asyncHandler(async (req, res) => {
   ]);
 
   return success(res, "Complaints fetched successfully", {
-    complaints,
+    complaints: formatComplaints(complaints),
     pagination: buildPagination(total, page, limit),
   });
 });
@@ -76,6 +118,12 @@ export const updateComplaintStatus = asyncHandler(async (req, res) => {
   complaint.status = status;
   await complaint.save();
 
+  const populated = await Complaint.findById(complaint._id)
+    .populate("resident", "name phone")
+    .populate("room", "roomNumber")
+    .populate("hostel", "name")
+    .lean();
+
   void notifyUser(complaint.resident, {
     title: "Complaint updated",
     body: `Your complaint is now ${status.replace(/_/g, " ")}`,
@@ -86,5 +134,7 @@ export const updateComplaintStatus = asyncHandler(async (req, res) => {
     },
   });
 
-  return success(res, "Complaint updated successfully", { complaint });
+  return success(res, "Complaint updated successfully", {
+    complaint: formatComplaint(populated),
+  });
 });

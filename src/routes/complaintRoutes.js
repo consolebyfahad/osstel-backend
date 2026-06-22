@@ -3,6 +3,7 @@ import { body } from "express-validator";
 import {
   createComplaint,
   getComplaints,
+  getMyComplaints,
   updateComplaintStatus,
 } from "../controllers/complaintController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
@@ -16,14 +17,14 @@ router.post(
   protect,
   authorize("resident"),
   [
-    body("hostelId").notEmpty().withMessage("hostelId is required"),
     body("title").trim().notEmpty().withMessage("Title is required"),
     body("description").trim().notEmpty().withMessage("Description is required"),
-    body("roomId").optional().isMongoId().withMessage("Invalid room ID"),
   ],
   validate,
-  createComplaint
+  createComplaint,
 );
+
+router.get("/me", protect, authorize("resident"), getMyComplaints);
 
 router.get("/", protect, authorize("manager"), getComplaints);
 
@@ -38,7 +39,7 @@ router.patch(
       .withMessage("Invalid status"),
   ],
   validate,
-  updateComplaintStatus
+  updateComplaintStatus,
 );
 
 export default router;

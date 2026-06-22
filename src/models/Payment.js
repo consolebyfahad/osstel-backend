@@ -37,6 +37,7 @@ const paymentSchema = new mongoose.Schema(
       default: null,
     },
     rejectionReason: { type: String, default: null },
+    reminderSentForPeriod: { type: String, default: null },
   },
   { timestamps: true }
 );

@@ -5,6 +5,11 @@ import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { notifyUser } from "../services/pushNotificationService.js";
 import {
+  buildRentReminderBody,
+  notifyRentReminder,
+  RENT_NOTIFICATION_URL,
+} from "../utils/rentNotificationHelpers.js";
+import {
   buildRentSummary,
   buildResidentYearSummary,
   ensureResidentRentRecord,
@@ -159,7 +164,7 @@ export const submitRentPayment = asyncHandler(async (req, res) => {
       type: "rent_submitted",
       data: {
         paymentId: payment._id.toString(),
-        url: "/rent",
+        url: RENT_NOTIFICATION_URL,
       },
     });
   }
@@ -218,14 +223,14 @@ const applyRentStatusUpdate = async (payment, { status, rejectionReason, reviewe
       title: "Rent approved",
       body: "Your rent payment has been approved.",
       type: "rent_approved",
-      data: { paymentId: payment._id.toString(), url: "/rent" },
+      data: { paymentId: payment._id.toString(), url: RENT_NOTIFICATION_URL },
     });
   } else if (record.status === "rejected") {
     void notifyUser(residentId, {
       title: "Rent rejected",
       body: record.rejectionReason || "Your rent payment was rejected.",
       type: "rent_rejected",
-      data: { paymentId: payment._id.toString(), url: "/rent" },
+      data: { paymentId: payment._id.toString(), url: RENT_NOTIFICATION_URL },
     });
   }
 
@@ -266,6 +271,32 @@ export const markRentPaid = asyncHandler(async (req, res) => {
   });
 
   return success(res, "Rent marked as paid", { record, rent: record });
+});
+
+export const sendRentAlert = asyncHandler(async (req, res) => {
+  const payment = await getPaymentForUser(req.params.id, req.user);
+
+  if (!["pending", "rejected"].includes(payment.status)) {
+    throw new AppError(
+      "Alerts can only be sent for pending or rejected rent",
+      400,
+    );
+  }
+
+  const residentId = payment.resident._id ?? payment.resident;
+  const customMessage = req.body.message?.trim();
+
+  await notifyRentReminder(residentId, payment, {
+    type: "rent_alert_manual",
+    title: "Rent payment reminder",
+    body:
+      customMessage ||
+      buildRentReminderBody(payment.month, payment.year, payment.amount),
+  });
+
+  return success(res, "Rent alert sent successfully", {
+    paymentId: payment._id.toString(),
+  });
 });
 
 export const getMyRent = asyncHandler(async (req, res) => {
