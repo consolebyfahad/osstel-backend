@@ -4,7 +4,6 @@ import {
   createHostel,
   deleteHostel,
   getHostelById,
-  getHostels,
   getMyHostels,
   updateHostel,
 } from "../controllers/hostelController.js";
@@ -20,7 +19,7 @@ import { validateObjectId } from "../middleware/validateObjectId.js";
 
 const router = Router();
 
-router.get("/", getHostels);
+router.get("/", protect, authorize("manager"), getMyHostels);
 router.get("/me", protect, authorize("manager"), getMyHostels);
 
 router.post(

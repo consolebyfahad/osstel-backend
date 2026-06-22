@@ -313,7 +313,9 @@ export const sendResidentRentAlert = asyncHandler(async (req, res) => {
 
   const customMessage = req.body.message?.trim();
 
-  await notifyRentReminder(tenancy.resident, payment, {
+  const residentId = tenancy.resident._id ?? tenancy.resident;
+
+  await notifyRentReminder(residentId, payment, {
     type: "rent_alert_manual",
     title: "Rent payment reminder",
     body:

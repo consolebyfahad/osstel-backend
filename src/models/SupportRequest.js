@@ -11,7 +11,7 @@ const supportRequestSchema = new mongoose.Schema(
     message: { type: String, required: true, trim: true },
     category: {
       type: String,
-      enum: ["billing", "technical", "account", "other"],
+      enum: ["general", "billing", "technical", "account", "other"],
       required: true,
     },
     status: {

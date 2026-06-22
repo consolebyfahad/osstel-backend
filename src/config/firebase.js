@@ -1,21 +1,30 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, readdirSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const backendRoot = resolve(__dirname, "../..");
 
 let initialized = false;
+
+const findDefaultServiceAccountPath = () => {
+  try {
+    const match = readdirSync(backendRoot).find(
+      (file) =>
+        file.includes("firebase-adminsdk") && file.endsWith(".json"),
+    );
+    return match ? resolve(backendRoot, match) : null;
+  } catch {
+    return null;
+  }
+};
 
 const initFirebase = () => {
   if (initialized) return admin;
 
   const inlineJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const configuredPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-  const defaultPath = resolve(
-    __dirname,
-    "../../osstel-fa11ad-firebase-adminsdk-fbsvc-94ef2fd395.json",
-  );
 
   let serviceAccount;
 
@@ -24,11 +33,11 @@ const initFirebase = () => {
   } else {
     const filePath = configuredPath
       ? resolve(process.cwd(), configuredPath)
-      : defaultPath;
+      : findDefaultServiceAccountPath();
 
-    if (!existsSync(filePath)) {
+    if (!filePath || !existsSync(filePath)) {
       console.warn(
-        `[firebase] Service account not found at ${filePath}. FCM push disabled.`,
+        "[firebase] Service account not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH. FCM push disabled.",
       );
       return null;
     }
@@ -41,6 +50,9 @@ const initFirebase = () => {
   });
 
   initialized = true;
+  console.log(
+    `[firebase] Admin SDK initialized for project ${serviceAccount.project_id}`,
+  );
   return admin;
 };
 

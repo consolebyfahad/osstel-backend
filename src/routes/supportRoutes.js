@@ -19,7 +19,7 @@ router.post(
     body("subject").trim().notEmpty().withMessage("Subject is required"),
     body("message").trim().notEmpty().withMessage("Message is required"),
     body("category")
-      .isIn(["billing", "technical", "account", "other"])
+      .isIn(["general", "billing", "technical", "account", "other"])
       .withMessage("Invalid category"),
   ],
   validate,

@@ -4,6 +4,15 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 30
+    },
+    "api/cron/rent-sync.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/rent-sync",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }
