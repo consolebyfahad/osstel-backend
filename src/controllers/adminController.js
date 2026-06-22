@@ -531,14 +531,20 @@ export const getContactInquiries = asyncHandler(async (req, res) => {
 });
 
 export const getContactInquiryById = asyncHandler(async (req, res) => {
-  const inquiry = await ContactInquiry.findById(req.params.id)
-    .populate("repliedBy", "name")
-    .lean();
+  let inquiry = await ContactInquiry.findById(req.params.id).populate(
+    "repliedBy",
+    "name"
+  );
 
   if (!inquiry) throw new AppError("Contact inquiry not found", 404);
 
+  if (inquiry.status === "new") {
+    inquiry.status = "in_progress";
+    await inquiry.save();
+  }
+
   return success(res, "Contact inquiry fetched successfully", {
-    inquiry: formatAdminContactInquiry(inquiry),
+    inquiry: formatAdminContactInquiry(inquiry.toObject()),
   });
 });
 
