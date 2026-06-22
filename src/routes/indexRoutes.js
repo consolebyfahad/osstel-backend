@@ -1,6 +1,7 @@
 import { Router } from "express";
 import adminRoutes from "./adminRoutes.js";
 import authRoutes from "./authRoutes.js";
+import contactRoutes from "./contactRoutes.js";
 import complaintRoutes from "./complaintRoutes.js";
 import dashboardRoutes from "./dashboardRoutes.js";
 import hostelRoutes from "./hostelRoutes.js";
@@ -21,6 +22,7 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/rent", rentRoutes);
 router.use("/residents", residentRoutes);
 router.use("/complaints", complaintRoutes);
+router.use("/contact", contactRoutes);
 router.use("/support", supportRoutes);
 router.use("/plans", planRoutes);
 router.use("/admin", adminRoutes);

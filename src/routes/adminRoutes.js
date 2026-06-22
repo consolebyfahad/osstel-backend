@@ -5,15 +5,19 @@ import {
   getAdminHostelById,
   getAdminHostels,
   getAdminStats,
+  getContactInquiries,
+  getContactInquiryById,
   getOwnerById,
   getOwners,
   getPlanRequests,
   getSupportRequestById,
   getSupportRequests,
   rejectPlanRequest,
+  replyToContactInquiry,
   replyToSupportRequest,
   toggleOwnerBlock,
   updateOwnerPlan,
+  updateContactInquiryStatus,
   updateSupportRequestStatus,
 } from "../controllers/adminController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
@@ -91,6 +95,37 @@ router.patch(
   ],
   validate,
   updateSupportRequestStatus
+);
+
+router.get("/contact-inquiries", getContactInquiries);
+router.get(
+  "/contact-inquiries/:id",
+  validateObjectId("id"),
+  getContactInquiryById
+);
+router.patch(
+  "/contact-inquiries/:id/reply",
+  validateObjectId("id"),
+  [
+    body("adminReply").trim().notEmpty().withMessage("adminReply is required"),
+    body("status")
+      .optional()
+      .isIn(["in_progress", "replied", "closed"])
+      .withMessage("Invalid status"),
+  ],
+  validate,
+  replyToContactInquiry
+);
+router.patch(
+  "/contact-inquiries/:id/status",
+  validateObjectId("id"),
+  [
+    body("status")
+      .isIn(["new", "in_progress", "replied", "closed"])
+      .withMessage("Invalid status"),
+  ],
+  validate,
+  updateContactInquiryStatus
 );
 
 export default router;

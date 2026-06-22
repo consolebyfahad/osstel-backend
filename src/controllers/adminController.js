@@ -4,7 +4,9 @@ import Tenancy from "../models/Tenancy.js";
 import User from "../models/User.js";
 import PlanUpgradeRequest from "../models/PlanUpgradeRequest.js";
 import SupportRequest from "../models/SupportRequest.js";
+import ContactInquiry from "../models/ContactInquiry.js";
 import { formatAdminSupportRequest } from "../utils/supportHelpers.js";
+import { formatAdminContactInquiry } from "../utils/contactHelpers.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
@@ -383,6 +385,7 @@ export const getAdminStats = asyncHandler(async (_req, res) => {
     totalHostels,
     pendingRequests,
     openSupportRequests,
+    newContactInquiries,
     standardOwners,
     premiumOwners,
   ] = await Promise.all([
@@ -391,6 +394,7 @@ export const getAdminStats = asyncHandler(async (_req, res) => {
     Hostel.countDocuments(),
     PlanUpgradeRequest.countDocuments({ status: "pending" }),
     SupportRequest.countDocuments({ status: { $in: ["open", "in_progress"] } }),
+    ContactInquiry.countDocuments({ status: "new" }),
     User.countDocuments({
       role: "manager",
       subscriptionPlan: { $in: ["standard", "basic"] },
@@ -405,6 +409,7 @@ export const getAdminStats = asyncHandler(async (_req, res) => {
       totalHostels,
       pendingPlanRequests: pendingRequests,
       openSupportRequests,
+      newContactInquiries,
       standardOwners,
       premiumOwners,
     },
@@ -491,5 +496,91 @@ export const updateSupportRequestStatus = asyncHandler(async (req, res) => {
 
   return success(res, "Support request status updated successfully", {
     request: formatAdminSupportRequest(populated),
+  });
+});
+
+export const getContactInquiries = asyncHandler(async (req, res) => {
+  const { status = "new", search } = req.query;
+  const { page, limit, skip } = getPagination(req.query);
+
+  const filter = {};
+  if (status !== "all") filter.status = status;
+  if (search) {
+    filter.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
+      { phone: { $regex: search, $options: "i" } },
+      { message: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const [inquiries, total] = await Promise.all([
+    ContactInquiry.find(filter)
+      .populate("repliedBy", "name")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    ContactInquiry.countDocuments(filter),
+  ]);
+
+  return success(res, "Contact inquiries fetched successfully", {
+    inquiries: inquiries.map(formatAdminContactInquiry),
+    pagination: buildPagination(total, page, limit),
+  });
+});
+
+export const getContactInquiryById = asyncHandler(async (req, res) => {
+  const inquiry = await ContactInquiry.findById(req.params.id)
+    .populate("repliedBy", "name")
+    .lean();
+
+  if (!inquiry) throw new AppError("Contact inquiry not found", 404);
+
+  return success(res, "Contact inquiry fetched successfully", {
+    inquiry: formatAdminContactInquiry(inquiry),
+  });
+});
+
+export const replyToContactInquiry = asyncHandler(async (req, res) => {
+  const { adminReply, status = "replied" } = req.body;
+
+  const inquiry = await ContactInquiry.findById(req.params.id);
+  if (!inquiry) throw new AppError("Contact inquiry not found", 404);
+
+  if (!["in_progress", "replied", "closed"].includes(status)) {
+    throw new AppError("Invalid status for reply", 400);
+  }
+
+  inquiry.adminReply = adminReply;
+  inquiry.status = status;
+  inquiry.repliedAt = new Date();
+  inquiry.repliedBy = req.user._id;
+  await inquiry.save();
+
+  const populated = await ContactInquiry.findById(inquiry._id)
+    .populate("repliedBy", "name")
+    .lean();
+
+  return success(res, "Contact inquiry replied successfully", {
+    inquiry: formatAdminContactInquiry(populated),
+  });
+});
+
+export const updateContactInquiryStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+
+  const inquiry = await ContactInquiry.findById(req.params.id);
+  if (!inquiry) throw new AppError("Contact inquiry not found", 404);
+
+  inquiry.status = status;
+  await inquiry.save();
+
+  const populated = await ContactInquiry.findById(inquiry._id)
+    .populate("repliedBy", "name")
+    .lean();
+
+  return success(res, "Contact inquiry status updated successfully", {
+    inquiry: formatAdminContactInquiry(populated),
   });
 });
