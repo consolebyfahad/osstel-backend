@@ -19,6 +19,11 @@ import {
   buildRentReminderBody,
   notifyRentReminder,
 } from "../utils/rentNotificationHelpers.js";
+import {
+  assertCanAddTenant,
+  assertHasFeature,
+  PLAN_FEATURES,
+} from "../utils/subscriptionHelpers.js";
 
 const resolveTenancyMonthlyRent = (monthlyRent, roomRent) => {
   if (monthlyRent === undefined || monthlyRent === null || monthlyRent === "") {
@@ -51,6 +56,8 @@ export const addResident = asyncHandler(async (req, res) => {
 
   const hostel = await getManagerHostel(hostelId, req.user._id);
   if (!hostel) throw new AppError("Hostel not found", 404);
+
+  await assertCanAddTenant(req.user);
 
   const room = await findRoomInHostel(hostel._id, roomNumber);
   if (!room) throw new AppError("Room not found in this hostel", 404);
@@ -312,6 +319,8 @@ export const sendResidentRentAlert = asyncHandler(async (req, res) => {
   }
 
   const customMessage = req.body.message?.trim();
+
+  assertHasFeature(req.user, PLAN_FEATURES.notifications);
 
   const residentId = tenancy.resident._id ?? tenancy.resident;
 

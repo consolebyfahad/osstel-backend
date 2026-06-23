@@ -1,3 +1,4 @@
+import { getPlansCatalog } from "../config/plans.js";
 import PlanUpgradeRequest from "../models/PlanUpgradeRequest.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
@@ -73,30 +74,6 @@ export const getMyPlanRequest = asyncHandler(async (req, res) => {
 
 export const getPlans = asyncHandler(async (_req, res) => {
   return success(res, "Plans fetched successfully", {
-    plans: [
-      {
-        id: "free",
-        name: "Free",
-        price: 0,
-        features: ["1 hostel", "Up to 10 rooms", "Basic dashboard"],
-      },
-      {
-        id: "standard",
-        name: "Standard",
-        price: 2999,
-        features: ["3 hostels", "Unlimited rooms", "Rent management", "Reports"],
-      },
-      {
-        id: "premium",
-        name: "Premium",
-        price: 5999,
-        features: [
-          "Unlimited hostels",
-          "Unlimited rooms",
-          "Priority support",
-          "Advanced analytics",
-        ],
-      },
-    ],
+    plans: getPlansCatalog(),
   });
 });

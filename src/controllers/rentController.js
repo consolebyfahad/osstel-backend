@@ -10,6 +10,10 @@ import {
   RENT_NOTIFICATION_URL,
 } from "../utils/rentNotificationHelpers.js";
 import {
+  assertHasFeature,
+  PLAN_FEATURES,
+} from "../utils/subscriptionHelpers.js";
+import {
   buildRentSummary,
   buildResidentYearSummary,
   ensureResidentRentRecord,
@@ -274,6 +278,8 @@ export const markRentPaid = asyncHandler(async (req, res) => {
 });
 
 export const sendRentAlert = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.notifications);
+
   const payment = await getPaymentForUser(req.params.id, req.user);
 
   if (!["pending", "rejected"].includes(payment.status)) {

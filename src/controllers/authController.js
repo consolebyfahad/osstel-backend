@@ -9,6 +9,7 @@ import {
   revokeRefreshToken,
   verifyRefreshToken,
 } from "../services/tokenService.js";
+import { assertResidentMobileAppAccess } from "../utils/subscriptionHelpers.js";
 
 const formatUser = (user) => ({
   id: user._id,
@@ -83,6 +84,10 @@ export const login = asyncHandler(async (req, res) => {
 
   if (user.status === "blocked") {
     throw new AppError("Your account has been blocked. Contact support.", 403);
+  }
+
+  if (user.role === "resident") {
+    await assertResidentMobileAppAccess(user._id);
   }
 
   await revokeAllUserTokens(user._id);

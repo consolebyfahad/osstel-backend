@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import mongoose from "mongoose";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import indexRoutes from "./routes/indexRoutes.js";
 import { apiLimiter } from "./middleware/rateLimiter.js";
@@ -11,6 +13,7 @@ import { error, success } from "./utils/apiResponse.js";
 import asyncHandler from "./middleware/asyncHandler.js";
 
 const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
@@ -28,6 +31,15 @@ app.use(
   }),
 );
 app.use(helmet());
+app.use(
+  "/assets",
+  (_req, res, next) => {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    next();
+  },
+  express.static(path.join(__dirname, "assets")),
+);
 app.use(express.json({ limit: "10mb" }));
 app.use(apiLimiter);
 

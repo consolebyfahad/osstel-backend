@@ -5,12 +5,14 @@ import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { requireManagerHostel } from "../utils/hostelHelpers.js";
 import { getActiveTenancyCount, syncRoomStatus } from "../utils/residentHelpers.js";
+import { assertCanAddRoom } from "../utils/subscriptionHelpers.js";
 
 export const createRoom = asyncHandler(async (req, res) => {
   const { hostelId } = req.params;
   const { roomNumber, capacity, rent } = req.body;
 
   const hostel = await requireManagerHostel(hostelId, req.user._id);
+  await assertCanAddRoom(req.user);
 
   try {
     const room = await Room.create({

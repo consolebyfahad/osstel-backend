@@ -6,8 +6,11 @@ import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { buildPagination, getPagination } from "../utils/pagination.js";
 import { requireManagerHostel } from "../utils/hostelHelpers.js";
+import { assertCanAddHostel } from "../utils/subscriptionHelpers.js";
 
 export const createHostel = asyncHandler(async (req, res) => {
+  await assertCanAddHostel(req.user);
+
   const { name, address, city, contactPhone } = req.body;
 
   const hostel = await Hostel.create({

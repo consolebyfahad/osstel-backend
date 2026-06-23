@@ -1,6 +1,7 @@
 import PushToken from "../models/PushToken.js";
 import Notification from "../models/Notification.js";
 import { getFirebaseAdmin } from "../config/firebase.js";
+import { getNotificationIconUrl } from "../config/notificationAssets.js";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -113,6 +114,7 @@ export const notifyUser = async (userId, payload) => {
     if (!tokens.length) return;
 
     const { title, body, data } = buildPayload(payload);
+    const iconUrl = getNotificationIconUrl();
     const expoMessages = [];
     const fcmMessages = [];
 
@@ -123,6 +125,7 @@ export const notifyUser = async (userId, payload) => {
           title,
           body,
           data,
+          icon: iconUrl,
           sound: "default",
           priority: "high",
           channelId: "default",
@@ -132,17 +135,21 @@ export const notifyUser = async (userId, payload) => {
 
       fcmMessages.push({
         token: entry.token,
-        notification: { title, body },
+        notification: { title, body, imageUrl: iconUrl },
         data,
         android: {
           priority: "high",
-          notification: { channelId: "default" },
+          notification: { channelId: "default", imageUrl: iconUrl },
         },
         apns: {
           payload: {
             aps: {
               sound: "default",
+              mutableContent: true,
             },
+          },
+          fcmOptions: {
+            imageUrl: iconUrl,
           },
         },
       });

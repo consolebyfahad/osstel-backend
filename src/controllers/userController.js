@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
+import { getManagerUsage } from "../utils/subscriptionHelpers.js";
 
 const buildProfile = async (user) => {
   const profile = {
@@ -48,6 +49,8 @@ const buildProfile = async (user) => {
       city: hostel.city,
       contactPhone: hostel.contactPhone,
     }));
+
+    profile.subscriptionUsage = await getManagerUsage(user._id);
   } else {
     const tenancy = await Tenancy.findOne({
       resident: user._id,
