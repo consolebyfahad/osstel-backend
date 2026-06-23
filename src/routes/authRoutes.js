@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { body } from "express-validator";
 import {
+  googleAuth,
   login,
   logout,
   refresh,
@@ -70,6 +71,14 @@ router.post(
   ],
   validate,
   login,
+);
+
+router.post(
+  "/google",
+  authLimiter,
+  [body("idToken").trim().notEmpty().withMessage("Google ID token is required")],
+  validate,
+  googleAuth,
 );
 
 router.post(

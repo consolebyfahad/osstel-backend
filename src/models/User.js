@@ -38,7 +38,18 @@ const userSchema = new mongoose.Schema(
       enum: ["free", "standard", "premium"],
       default: "free",
     },
-    password: { type: String, required: true, minlength: 6 },
+    authProvider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+    },
+    googleId: {
+      type: String,
+      trim: true,
+      sparse: true,
+      unique: true,
+    },
+    password: { type: String, minlength: 6 },
   },
   { timestamps: true },
 );

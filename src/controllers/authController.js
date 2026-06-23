@@ -10,12 +10,18 @@ import {
   verifyRefreshToken,
 } from "../services/tokenService.js";
 import { assertResidentMobileAppAccess } from "../utils/subscriptionHelpers.js";
+import { verifyGoogleIdToken } from "../services/googleAuthService.js";
+import {
+  buildGooglePhone,
+  buildRandomPasswordHash,
+} from "../utils/googleUserHelpers.js";
 
 const formatUser = (user) => ({
   id: user._id,
   name: user.name,
   phone: user.phone,
   userId: user.userId || null,
+  email: user.email || null,
   role: user.role,
   status: user.status || "active",
   subscriptionPlan:
@@ -78,7 +84,15 @@ export const login = asyncHandler(async (req, res) => {
 
   const user = await findUserForLogin({ phone, userId });
 
-  if (!user || !(await bcrypt.compare(password, user.password))) {
+  if (!user) {
+    throw new AppError("Invalid credentials", 401);
+  }
+
+  if (user.authProvider === "google" && user.googleId) {
+    throw new AppError("This account uses Google Sign-In", 400);
+  }
+
+  if (!(await bcrypt.compare(password, user.password))) {
     throw new AppError("Invalid credentials", 401);
   }
 
@@ -128,4 +142,74 @@ export const logout = asyncHandler(async (req, res) => {
   }
 
   return success(res, "Logged out successfully");
+});
+
+export const googleAuth = asyncHandler(async (req, res) => {
+  const { idToken } = req.body;
+
+  if (!idToken?.trim()) {
+    throw new AppError("Google ID token is required", 400);
+  }
+
+  let profile;
+
+  try {
+    profile = await verifyGoogleIdToken(idToken.trim());
+  } catch (error) {
+    throw new AppError(error.message || "Invalid Google token", 401);
+  }
+
+  let user =
+    (await User.findOne({ googleId: profile.googleId })) ||
+    (await User.findOne({ email: profile.email }));
+
+  if (user?.role === "resident") {
+    throw new AppError(
+      "Residents must sign in with User ID and password",
+      403,
+    );
+  }
+
+  if (user?.status === "blocked") {
+    throw new AppError("Your account has been blocked. Contact support.", 403);
+  }
+
+  if (!user) {
+    user = await User.create({
+      name: profile.name,
+      email: profile.email,
+      googleId: profile.googleId,
+      phone: buildGooglePhone(profile.googleId),
+      role: "manager",
+      authProvider: "google",
+      profileImage: profile.picture,
+      password: await buildRandomPasswordHash(),
+    });
+  } else {
+    if (!user.googleId) {
+      user.googleId = profile.googleId;
+    }
+
+    if (!user.email) {
+      user.email = profile.email;
+    }
+
+    if (!user.profileImage && profile.picture) {
+      user.profileImage = profile.picture;
+    }
+
+    if (user.authProvider !== "google") {
+      user.authProvider = "google";
+    }
+
+    await user.save();
+  }
+
+  await revokeAllUserTokens(user._id);
+  const tokens = await generateAuthTokens(user);
+
+  return success(res, "Google sign-in successful", {
+    ...tokens,
+    user: formatUser(user),
+  });
 });
