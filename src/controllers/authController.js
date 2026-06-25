@@ -14,6 +14,7 @@ import { formatSubscriptionForClient } from "../utils/trialHelpers.js";
 import { verifyGoogleIdToken } from "../services/googleAuthService.js";
 import {
   buildRandomPasswordHash,
+  hasRealPhone,
   isLegacyGooglePhone,
 } from "../utils/googleUserHelpers.js";
 
@@ -144,6 +145,99 @@ export const logout = asyncHandler(async (req, res) => {
   return success(res, "Logged out successfully");
 });
 
+const assertGoogleSignInAllowed = (user) => {
+  if (user?.role === "resident") {
+    throw new AppError(
+      "Residents must sign in with User ID and password",
+      403,
+    );
+  }
+
+  if (user?.status === "blocked") {
+    throw new AppError("Your account has been blocked. Contact support.", 403);
+  }
+};
+
+const applyGoogleProfile = async (user, profile) => {
+  const updates = {
+    name: profile.name || user.name,
+    email: profile.email,
+    authProvider: "google",
+  };
+
+  if (!user.googleId) {
+    updates.googleId = profile.googleId;
+  }
+
+  if (!user.profileImage && profile.picture) {
+    updates.profileImage = profile.picture;
+  }
+
+  const updateQuery = { $set: updates };
+
+  if (!hasRealPhone(user.phone)) {
+    updateQuery.$unset = { phone: 1 };
+  }
+
+  await User.updateOne({ _id: user._id }, updateQuery);
+
+  return User.findById(user._id);
+};
+
+const createGoogleUser = async (profile) => {
+  const buildPayload = async () => ({
+    name: profile.name,
+    email: profile.email,
+    googleId: profile.googleId,
+    role: "manager",
+    authProvider: "google",
+    profileImage: profile.picture,
+    password: await buildRandomPasswordHash(),
+  });
+
+  const saveCreatedUser = async (payload) => {
+    const user = await User.create(payload);
+    await User.updateOne({ _id: user._id }, { $unset: { phone: 1 } });
+    return User.findById(user._id);
+  };
+
+  try {
+    return await saveCreatedUser(await buildPayload());
+  } catch (error) {
+    if (error.code !== 11000) {
+      throw error;
+    }
+
+    const duplicateField = Object.keys(error.keyPattern || {})[0];
+
+    if (duplicateField === "phone") {
+      await User.updateMany(
+        { $or: [{ phone: null }, { phone: "" }] },
+        { $unset: { phone: 1 } },
+      );
+
+      try {
+        return await saveCreatedUser(await buildPayload());
+      } catch (retryError) {
+        if (retryError.code !== 11000) {
+          throw retryError;
+        }
+      }
+    }
+
+    const existing =
+      (await User.findOne({ googleId: profile.googleId })) ||
+      (await User.findOne({ email: profile.email }));
+
+    if (!existing) {
+      throw error;
+    }
+
+    assertGoogleSignInAllowed(existing);
+    return applyGoogleProfile(existing, profile);
+  }
+};
+
 export const googleAuth = asyncHandler(async (req, res) => {
   const { idToken } = req.body;
 
@@ -163,49 +257,11 @@ export const googleAuth = asyncHandler(async (req, res) => {
     (await User.findOne({ googleId: profile.googleId })) ||
     (await User.findOne({ email: profile.email }));
 
-  if (user?.role === "resident") {
-    throw new AppError(
-      "Residents must sign in with User ID and password",
-      403,
-    );
-  }
-
-  if (user?.status === "blocked") {
-    throw new AppError("Your account has been blocked. Contact support.", 403);
-  }
-
-  if (!user) {
-    user = await User.create({
-      name: profile.name,
-      email: profile.email,
-      googleId: profile.googleId,
-      role: "manager",
-      authProvider: "google",
-      profileImage: profile.picture,
-      password: await buildRandomPasswordHash(),
-    });
+  if (user) {
+    assertGoogleSignInAllowed(user);
+    user = await applyGoogleProfile(user, profile);
   } else {
-    if (!user.googleId) {
-      user.googleId = profile.googleId;
-    }
-
-    if (!user.email) {
-      user.email = profile.email;
-    }
-
-    if (!user.profileImage && profile.picture) {
-      user.profileImage = profile.picture;
-    }
-
-    if (user.authProvider !== "google") {
-      user.authProvider = "google";
-    }
-
-    if (!user.phone || isLegacyGooglePhone(user.phone)) {
-      user.set("phone", undefined);
-    }
-
-    await user.save();
+    user = await createGoogleUser(profile);
   }
 
   await revokeAllUserTokens(user._id);
