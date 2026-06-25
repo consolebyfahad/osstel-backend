@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { body } from "express-validator";
-import { getMe, updateMe } from "../controllers/userController.js";
+import { getMe, updateMe, changePassword } from "../controllers/userController.js";
 import {
   registerMyPushToken,
   removeMyPushToken,
@@ -64,6 +64,30 @@ router.patch(
   ],
   validate,
   updateMe
+);
+
+router.patch(
+  "/me/password",
+  protect,
+  [
+    body("currentPassword")
+      .notEmpty()
+      .withMessage("Current password is required"),
+    body("newPassword")
+      .isLength({ min: 6 })
+      .withMessage("New password must be at least 6 characters"),
+    body("confirmPassword")
+      .notEmpty()
+      .withMessage("Confirm password is required")
+      .custom((value, { req }) => {
+        if (value !== req.body.newPassword) {
+          throw new Error("Passwords do not match");
+        }
+        return true;
+      }),
+  ],
+  validate,
+  changePassword,
 );
 
 router.put(

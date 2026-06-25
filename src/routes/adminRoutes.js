@@ -2,6 +2,7 @@ import { Router } from "express";
 import { body } from "express-validator";
 import {
   approvePlanRequest,
+  cancelOwnerTrial,
   getAdminHostelById,
   getAdminHostels,
   getAdminStats,
@@ -9,6 +10,7 @@ import {
   getContactInquiryById,
   getOwnerById,
   getOwners,
+  grantOwnerTrial,
   getPlanRequests,
   getSupportRequestById,
   getSupportRequests,
@@ -49,6 +51,22 @@ router.patch(
   ],
   validate,
   updateOwnerPlan
+);
+router.post(
+  "/owners/:id/trial",
+  validateObjectId("id"),
+  [
+    body("days")
+      .isIn([10, 20, 30])
+      .withMessage("Trial duration must be 10, 20, or 30 days"),
+  ],
+  validate,
+  grantOwnerTrial
+);
+router.delete(
+  "/owners/:id/trial",
+  validateObjectId("id"),
+  cancelOwnerTrial
 );
 
 router.get("/hostels", getAdminHostels);

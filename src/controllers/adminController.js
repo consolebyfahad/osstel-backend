@@ -11,8 +11,54 @@ import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { buildPagination, getPagination } from "../utils/pagination.js";
+import {
+  TRIAL_DURATIONS,
+  TRIAL_PLAN,
+  formatTrialForClient,
+  getEffectivePlanId,
+} from "../utils/trialHelpers.js";
+import { getPlanConfig } from "../config/plans.js";
+import { notifyUser } from "../services/pushNotificationService.js";
 
 const normalizePlan = (plan) => (plan === "basic" ? "standard" : plan);
+
+const getPlanName = (planId) => getPlanConfig(normalizePlan(planId)).name;
+
+const notifyPlanUpgrade = (ownerId, planId, adminNote) => {
+  void notifyUser(ownerId, {
+    title: "Plan upgraded",
+    body:
+      adminNote?.trim() ||
+      `Your ${getPlanName(planId)} plan is now active.`,
+    type: "plan_approved",
+    data: { url: "/subscription" },
+  });
+};
+
+const notifyPlanRejected = (ownerId, adminNote) => {
+  void notifyUser(ownerId, {
+    title: "Plan request declined",
+    body: adminNote?.trim() || "Your upgrade request was not approved.",
+    type: "plan_rejected",
+    data: { url: "/subscription" },
+  });
+};
+
+const notifySupportReply = (userId, adminReply, supportRequestId) => {
+  const trimmed = adminReply.trim();
+  if (!trimmed) return;
+
+  void notifyUser(userId, {
+    title: "Support reply",
+    body:
+      trimmed.length > 160 ? `${trimmed.slice(0, 157)}...` : trimmed,
+    type: "support_reply",
+    data: {
+      supportRequestId: String(supportRequestId),
+      url: "/support",
+    },
+  });
+};
 
 const formatOwner = (owner, hostels = []) => ({
   id: owner._id,
@@ -21,6 +67,8 @@ const formatOwner = (owner, hostels = []) => ({
   role: owner.role,
   status: owner.status || "active",
   subscriptionPlan: normalizePlan(owner.subscriptionPlan || "free"),
+  effectivePlan: getEffectivePlanId(owner),
+  trial: formatTrialForClient(owner),
   hostelsCount: hostels.length,
   hostels: hostels.map((h) => ({
     id: h._id,
@@ -131,6 +179,15 @@ export const toggleOwnerBlock = asyncHandler(async (req, res) => {
   owner.status = blocked ? "blocked" : "active";
   await owner.save();
 
+  void notifyUser(owner._id, {
+    title: blocked ? "Account suspended" : "Account restored",
+    body: blocked
+      ? "Your Osstel account has been suspended. Contact support if you believe this is a mistake."
+      : "Your Osstel account is active again.",
+    type: blocked ? "account_blocked" : "account_unblocked",
+    data: { url: blocked ? "/support" : "/subscription" },
+  });
+
   return success(res, `Owner ${blocked ? "blocked" : "unblocked"} successfully`, {
     owner: {
       id: owner._id,
@@ -148,6 +205,8 @@ export const updateOwnerPlan = asyncHandler(async (req, res) => {
   if (!owner) throw new AppError("Owner not found", 404);
 
   owner.subscriptionPlan = plan;
+  owner.trialPlan = null;
+  owner.trialEndsAt = null;
   await owner.save();
 
   await PlanUpgradeRequest.updateMany(
@@ -160,11 +219,79 @@ export const updateOwnerPlan = asyncHandler(async (req, res) => {
     }
   );
 
+  notifyPlanUpgrade(owner._id, owner.subscriptionPlan, "Your plan was updated by Osstel support.");
+
   return success(res, "Owner plan updated successfully", {
     owner: {
       id: owner._id,
       name: owner.name,
-      subscriptionPlan: owner.subscriptionPlan,
+      subscriptionPlan: normalizePlan(owner.subscriptionPlan),
+      effectivePlan: getEffectivePlanId(owner),
+      trial: formatTrialForClient(owner),
+    },
+  });
+});
+
+export const grantOwnerTrial = asyncHandler(async (req, res) => {
+  const { days } = req.body;
+
+  if (!TRIAL_DURATIONS.includes(days)) {
+    throw new AppError("Trial duration must be 10, 20, or 30 days", 400);
+  }
+
+  const owner = await User.findOne({ _id: req.params.id, role: "manager" });
+
+  if (!owner) throw new AppError("Owner not found", 404);
+
+  owner.trialPlan = TRIAL_PLAN;
+  owner.trialEndsAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  await owner.save();
+
+  void notifyUser(owner._id, {
+    title: "Pro trial activated",
+    body: `You have ${days} days of full Pro access.`,
+    type: "trial_granted",
+    data: { url: "/subscription" },
+  });
+
+  return success(res, `Pro trial granted for ${days} days`, {
+    owner: {
+      id: owner._id,
+      name: owner.name,
+      subscriptionPlan: normalizePlan(owner.subscriptionPlan),
+      effectivePlan: getEffectivePlanId(owner),
+      trial: formatTrialForClient(owner),
+    },
+  });
+});
+
+export const cancelOwnerTrial = asyncHandler(async (req, res) => {
+  const owner = await User.findOne({ _id: req.params.id, role: "manager" });
+
+  if (!owner) throw new AppError("Owner not found", 404);
+
+  if (!owner.trialPlan || !owner.trialEndsAt) {
+    throw new AppError("This owner does not have an active trial", 400);
+  }
+
+  owner.trialPlan = null;
+  owner.trialEndsAt = null;
+  await owner.save();
+
+  void notifyUser(owner._id, {
+    title: "Pro trial ended",
+    body: "Your Pro trial was ended early. Your subscription plan is unchanged.",
+    type: "trial_cancelled",
+    data: { url: "/subscription" },
+  });
+
+  return success(res, "Trial cancelled successfully", {
+    owner: {
+      id: owner._id,
+      name: owner.name,
+      subscriptionPlan: normalizePlan(owner.subscriptionPlan),
+      effectivePlan: getEffectivePlanId(owner),
+      trial: null,
     },
   });
 });
@@ -335,6 +462,8 @@ export const approvePlanRequest = asyncHandler(async (req, res) => {
   }
 
   request.owner.subscriptionPlan = request.requestedPlan;
+  request.owner.trialPlan = null;
+  request.owner.trialEndsAt = null;
   await request.owner.save();
 
   request.status = "approved";
@@ -342,6 +471,12 @@ export const approvePlanRequest = asyncHandler(async (req, res) => {
   request.reviewedAt = new Date();
   request.adminNote = adminNote || "Payment received and plan upgraded";
   await request.save();
+
+  notifyPlanUpgrade(
+    request.owner._id,
+    request.requestedPlan,
+    request.adminNote,
+  );
 
   return success(res, "Plan request approved successfully", {
     request: {
@@ -360,7 +495,10 @@ export const approvePlanRequest = asyncHandler(async (req, res) => {
 export const rejectPlanRequest = asyncHandler(async (req, res) => {
   const { adminNote } = req.body;
 
-  const request = await PlanUpgradeRequest.findById(req.params.id);
+  const request = await PlanUpgradeRequest.findById(req.params.id).populate(
+    "owner",
+    "_id",
+  );
 
   if (!request) throw new AppError("Plan request not found", 404);
   if (request.status !== "pending") {
@@ -372,6 +510,8 @@ export const rejectPlanRequest = asyncHandler(async (req, res) => {
   request.reviewedAt = new Date();
   request.adminNote = adminNote || "Request rejected";
   await request.save();
+
+  notifyPlanRejected(request.owner._id, request.adminNote);
 
   return success(res, "Plan request rejected", {
     request: { id: request._id, status: request.status },
@@ -417,12 +557,19 @@ export const getAdminStats = asyncHandler(async (_req, res) => {
 });
 
 export const getSupportRequests = asyncHandler(async (req, res) => {
-  const { status = "open", category } = req.query;
+  const { status = "open", category, search } = req.query;
   const { page, limit, skip } = getPagination(req.query);
 
   const filter = {};
   if (status !== "all") filter.status = status;
   if (category) filter.category = category;
+  if (search) {
+    filter.$or = [
+      { subject: { $regex: search, $options: "i" } },
+      { message: { $regex: search, $options: "i" } },
+      { adminReply: { $regex: search, $options: "i" } },
+    ];
+  }
 
   const [requests, total] = await Promise.all([
     SupportRequest.find(filter)
@@ -470,6 +617,8 @@ export const replyToSupportRequest = asyncHandler(async (req, res) => {
   request.repliedBy = req.user._id;
   await request.save();
 
+  notifySupportReply(request.user, adminReply, request._id);
+
   const populated = await SupportRequest.findById(request._id)
     .populate("user", "name phone role")
     .populate("repliedBy", "name")
@@ -481,13 +630,25 @@ export const replyToSupportRequest = asyncHandler(async (req, res) => {
 });
 
 export const updateSupportRequestStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
+  const { status, adminReply } = req.body;
 
   const request = await SupportRequest.findById(req.params.id);
   if (!request) throw new AppError("Support request not found", 404);
 
   request.status = status;
+
+  const trimmedReply = typeof adminReply === "string" ? adminReply.trim() : "";
+  if (trimmedReply) {
+    request.adminReply = trimmedReply;
+    request.repliedAt = new Date();
+    request.repliedBy = req.user._id;
+  }
+
   await request.save();
+
+  if (trimmedReply) {
+    notifySupportReply(request.user, trimmedReply, request._id);
+  }
 
   const populated = await SupportRequest.findById(request._id)
     .populate("user", "name phone role")

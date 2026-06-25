@@ -5,14 +5,21 @@ import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { getManagerUsage } from "../utils/subscriptionHelpers.js";
+import { formatSubscriptionForClient } from "../utils/trialHelpers.js";
+import bcrypt from "bcryptjs";
+
+import { isLegacyGooglePhone } from "../utils/googleUserHelpers.js";
 
 const buildProfile = async (user) => {
   const profile = {
     id: user._id,
     name: user.name,
-    phone: user.phone,
+    phone:
+      user.phone && !isLegacyGooglePhone(user.phone) ? user.phone : null,
     userId: user.userId || null,
     email: user.email || null,
+    authProvider: user.authProvider || "local",
+    googleId: user.googleId || null,
     address: user.address || null,
     dateOfBirth: user.dateOfBirth
       ? user.dateOfBirth.toISOString().split("T")[0]
@@ -25,10 +32,7 @@ const buildProfile = async (user) => {
     fatherName: user.fatherName || null,
     fatherPhone: user.fatherPhone || null,
     role: user.role,
-    subscriptionPlan:
-      user.subscriptionPlan === "basic"
-        ? "standard"
-        : user.subscriptionPlan || "free",
+    ...formatSubscriptionForClient(user),
     hostels: [],
     hostel: null,
     room: null,
@@ -115,6 +119,10 @@ export const updateMe = asyncHandler(async (req, res) => {
 
   if (req.body.name !== undefined) user.name = req.body.name;
   if (req.body.email !== undefined) {
+    if (user.authProvider === "google") {
+      throw new AppError("Email cannot be changed for Google accounts", 400);
+    }
+
     if (req.body.email === "" || req.body.email === null) {
       user.set("email", undefined);
     } else {
@@ -152,4 +160,40 @@ export const updateMe = asyncHandler(async (req, res) => {
 
   const profile = await buildProfile(user);
   return success(res, "Profile updated successfully", { user: profile });
+});
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const user = await User.findById(req.user._id).select("+password");
+
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  if (user.authProvider === "google") {
+    throw new AppError(
+      "Password cannot be changed for Google sign-in accounts",
+      400,
+    );
+  }
+
+  if (!user.password) {
+    throw new AppError("Password is not set for this account", 400);
+  }
+
+  const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+  if (!isCurrentValid) {
+    throw new AppError("Current password is incorrect", 400);
+  }
+
+  const isSamePassword = await bcrypt.compare(newPassword, user.password);
+  if (isSamePassword) {
+    throw new AppError("New password must be different from current password", 400);
+  }
+
+  user.password = await bcrypt.hash(newPassword, 12);
+  await user.save();
+
+  return success(res, "Password changed successfully");
 });

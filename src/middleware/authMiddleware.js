@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import AppError from "../utils/AppError.js";
+import { clearExpiredTrialIfNeeded } from "../utils/trialHelpers.js";
 
 export const protect = async (req, _res, next) => {
   const authHeader = req.headers.authorization;
@@ -21,6 +22,8 @@ export const protect = async (req, _res, next) => {
     if (user.status === "blocked") {
       throw new AppError("Your account has been blocked. Contact support.", 403);
     }
+
+    await clearExpiredTrialIfNeeded(user);
 
     req.user = user;
     next();

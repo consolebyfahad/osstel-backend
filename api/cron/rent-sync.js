@@ -1,5 +1,6 @@
 import { syncCurrentMonthRentForAllResidents } from "../src/utils/rentHelpers.js";
 import { sendMonthlyRentReminders } from "../src/utils/rentNotificationHelpers.js";
+import { expireAllTrials } from "../src/utils/trialHelpers.js";
 import { ensureDbConnected } from "../src/config/db.js";
 
 export default async function handler(req, res) {
@@ -19,6 +20,7 @@ export default async function handler(req, res) {
 
     const syncResult = await syncCurrentMonthRentForAllResidents();
     const reminderResult = await sendMonthlyRentReminders();
+    const expiredTrials = await expireAllTrials();
 
     return res.status(200).json({
       success: true,
@@ -26,6 +28,7 @@ export default async function handler(req, res) {
       data: {
         sync: syncResult,
         reminders: reminderResult,
+        expiredTrials,
       },
     });
   } catch (error) {

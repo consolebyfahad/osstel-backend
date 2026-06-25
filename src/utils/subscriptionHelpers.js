@@ -9,6 +9,7 @@ import {
   normalizePlanId,
   PLAN_FEATURES,
 } from "../config/plans.js";
+import { getEffectivePlanId } from "./trialHelpers.js";
 
 export { PLAN_FEATURES };
 
@@ -108,7 +109,7 @@ export const hasFeature = (planId, featureName) => {
 };
 
 export const assertCanAddHostel = async (user) => {
-  const planId = normalizePlanId(user.subscriptionPlan);
+  const planId = getEffectivePlanId(user);
   const usage = await getManagerUsage(user._id);
   const check = canAddHostel(planId, usage.hostels);
 
@@ -118,7 +119,7 @@ export const assertCanAddHostel = async (user) => {
 };
 
 export const assertCanAddRoom = async (user) => {
-  const planId = normalizePlanId(user.subscriptionPlan);
+  const planId = getEffectivePlanId(user);
   const usage = await getManagerUsage(user._id);
   const check = canAddRoom(planId, usage.rooms);
 
@@ -128,7 +129,7 @@ export const assertCanAddRoom = async (user) => {
 };
 
 export const assertCanAddTenant = async (user) => {
-  const planId = normalizePlanId(user.subscriptionPlan);
+  const planId = getEffectivePlanId(user);
   const usage = await getManagerUsage(user._id);
   const check = canAddTenant(planId, usage.tenants);
 
@@ -138,7 +139,7 @@ export const assertCanAddTenant = async (user) => {
 };
 
 export const assertHasFeature = (user, featureName) => {
-  const planId = normalizePlanId(user.subscriptionPlan);
+  const planId = getEffectivePlanId(user);
   const check = hasFeature(planId, featureName);
 
   if (!check.allowed) {
@@ -161,15 +162,14 @@ export const assertResidentMobileAppAccess = async (residentUserId) => {
     return;
   }
 
-  const manager = await User.findById(hostel.manager).select("subscriptionPlan").lean();
+  const manager = await User.findById(hostel.manager)
+    .select("subscriptionPlan trialPlan trialEndsAt")
+    .lean();
   if (!manager) {
     return;
   }
 
-  const check = hasFeature(
-    normalizePlanId(manager.subscriptionPlan),
-    PLAN_FEATURES.tenant_mobile_app,
-  );
+  const check = hasFeature(getEffectivePlanId(manager), PLAN_FEATURES.tenant_mobile_app);
 
   if (!check.allowed) {
     throw new AppError(

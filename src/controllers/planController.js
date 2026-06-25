@@ -3,6 +3,7 @@ import PlanUpgradeRequest from "../models/PlanUpgradeRequest.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
+import { getEffectivePlanId } from "../utils/trialHelpers.js";
 
 const normalizePlan = (plan) => (plan === "basic" ? "standard" : plan);
 
@@ -10,7 +11,7 @@ const planRank = { free: 0, standard: 1, basic: 1, premium: 2 };
 
 export const requestPlanUpgrade = asyncHandler(async (req, res) => {
   const { plan, note } = req.body;
-  const currentPlan = normalizePlan(req.user.subscriptionPlan);
+  const currentPlan = getEffectivePlanId(req.user);
 
   if (planRank[plan] <= planRank[currentPlan]) {
     throw new AppError(
@@ -68,7 +69,7 @@ export const getMyPlanRequest = asyncHandler(async (req, res) => {
           createdAt: request.createdAt,
         }
       : null,
-    currentPlan: normalizePlan(req.user.subscriptionPlan),
+    currentPlan: getEffectivePlanId(req.user),
   });
 });
 

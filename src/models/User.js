@@ -3,7 +3,12 @@ import mongoose from "mongoose";
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
-    phone: { type: String, required: true, unique: true, trim: true },
+    phone: {
+      type: String,
+      trim: true,
+      sparse: true,
+      unique: true,
+    },
     userId: {
       type: String,
       trim: true,
@@ -38,6 +43,15 @@ const userSchema = new mongoose.Schema(
       enum: ["free", "standard", "premium"],
       default: "free",
     },
+    trialPlan: {
+      type: String,
+      enum: ["standard", "premium", null],
+      default: null,
+    },
+    trialEndsAt: {
+      type: Date,
+      default: null,
+    },
     authProvider: {
       type: String,
       enum: ["local", "google"],
@@ -55,6 +69,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ role: 1, status: 1 });
+userSchema.index({ phone: 1 }, { unique: true, sparse: true });
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ userId: 1 }, { unique: true, sparse: true });
 

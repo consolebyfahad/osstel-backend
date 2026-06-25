@@ -25,6 +25,11 @@ const runStartupCleanup = async () => {
   const users = mongoose.connection.collection("users");
   await users.updateMany({ email: null }, { $unset: { email: 1 } });
   await users.updateMany({ userId: null }, { $unset: { userId: 1 } });
+  await users.updateMany({ phone: null }, { $unset: { phone: 1 } });
+  await users.updateMany(
+    { phone: { $regex: /^google_/ } },
+    { $unset: { phone: 1 } },
+  );
 };
 
 const handleConnectionError = (err) => {

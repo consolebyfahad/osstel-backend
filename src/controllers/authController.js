@@ -10,24 +10,24 @@ import {
   verifyRefreshToken,
 } from "../services/tokenService.js";
 import { assertResidentMobileAppAccess } from "../utils/subscriptionHelpers.js";
+import { formatSubscriptionForClient } from "../utils/trialHelpers.js";
 import { verifyGoogleIdToken } from "../services/googleAuthService.js";
 import {
-  buildGooglePhone,
   buildRandomPasswordHash,
+  isLegacyGooglePhone,
 } from "../utils/googleUserHelpers.js";
 
 const formatUser = (user) => ({
   id: user._id,
   name: user.name,
-  phone: user.phone,
+  phone: user.phone && !isLegacyGooglePhone(user.phone) ? user.phone : null,
   userId: user.userId || null,
   email: user.email || null,
   role: user.role,
   status: user.status || "active",
-  subscriptionPlan:
-    user.subscriptionPlan === "basic"
-      ? "standard"
-      : user.subscriptionPlan || "free",
+  authProvider: user.authProvider || "local",
+  googleId: user.googleId || null,
+  ...formatSubscriptionForClient(user),
 });
 
 const findUserForLogin = async ({ phone, userId }) => {
@@ -179,7 +179,6 @@ export const googleAuth = asyncHandler(async (req, res) => {
       name: profile.name,
       email: profile.email,
       googleId: profile.googleId,
-      phone: buildGooglePhone(profile.googleId),
       role: "manager",
       authProvider: "google",
       profileImage: profile.picture,
@@ -200,6 +199,10 @@ export const googleAuth = asyncHandler(async (req, res) => {
 
     if (user.authProvider !== "google") {
       user.authProvider = "google";
+    }
+
+    if (!user.phone || isLegacyGooglePhone(user.phone)) {
+      user.set("phone", undefined);
     }
 
     await user.save();
