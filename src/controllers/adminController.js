@@ -84,7 +84,7 @@ const notifySupportReply = (userId, adminReply, supportRequestId) => {
 };
 
 const formatOwner = (owner, hostels = []) => ({
-  id: owner._id,
+  id: String(owner._id),
   name: owner.name,
   ...formatOwnerContact(owner),
   role: owner.role,
@@ -391,7 +391,7 @@ export const getAdminHostels = asyncHandler(async (req, res) => {
       ]);
 
       return {
-        id: hostel._id,
+        id: String(hostel._id),
         name: hostel.name,
         address: hostel.address,
         city: hostel.city,
@@ -399,13 +399,15 @@ export const getAdminHostels = asyncHandler(async (req, res) => {
         roomsCount,
         tenantsCount,
         status: tenantsCount > 0 ? "active" : "vacant",
-        owner: {
-          id: hostel.manager._id,
-          name: hostel.manager.name,
-          phone: hostel.manager.phone,
-          status: hostel.manager.status,
-          subscriptionPlan: normalizePlan(hostel.manager.subscriptionPlan),
-        },
+        owner: hostel.manager
+          ? {
+              id: String(hostel.manager._id),
+              name: hostel.manager.name,
+              phone: hostel.manager.phone ?? "",
+              status: hostel.manager.status || "active",
+              subscriptionPlan: normalizePlan(hostel.manager.subscriptionPlan),
+            }
+          : null,
         createdAt: hostel.createdAt,
       };
     })

@@ -87,15 +87,40 @@ export const clearExpiredSubscriptionIfNeeded = async (user) => {
 export const formatSubscriptionPeriodForClient = (user) => {
   if (!isPaidSubscriptionActive(user)) return null;
 
+  const plan = normalizePlanId(user.subscriptionPlan);
+  const startedAt = user.planStartedAt
+    ? new Date(user.planStartedAt).toISOString()
+    : null;
+
+  if (!user?.planExpiresAt) {
+    return {
+      active: true,
+      plan,
+      startedAt,
+      expiresAt: null,
+      daysRemaining: null,
+      canRenew: false,
+    };
+  }
+
   const expiresAt = new Date(user.planExpiresAt);
+  if (Number.isNaN(expiresAt.getTime())) {
+    return {
+      active: true,
+      plan,
+      startedAt,
+      expiresAt: null,
+      daysRemaining: null,
+      canRenew: false,
+    };
+  }
+
   const daysRemaining = getSubscriptionDaysRemaining(user);
 
   return {
     active: true,
-    plan: normalizePlanId(user.subscriptionPlan),
-    startedAt: user.planStartedAt
-      ? new Date(user.planStartedAt).toISOString()
-      : null,
+    plan,
+    startedAt,
     expiresAt: expiresAt.toISOString(),
     daysRemaining: daysRemaining ?? 0,
     canRenew: canRenewSubscription(user),
