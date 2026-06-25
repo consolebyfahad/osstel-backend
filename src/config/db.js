@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { getMongoUri } from "./env.js";
+import User from "../models/User.js";
 
 const READY_STATE = {
   0: "disconnected",
@@ -17,20 +18,43 @@ const getCache = () => {
   return global.mongoose;
 };
 
+const dropIndexIfExists = async (collection, indexName) => {
+  try {
+    await collection.dropIndex(indexName);
+  } catch (err) {
+    if (err.code !== 27 && !/index not found/i.test(err.message)) {
+      throw err;
+    }
+  }
+};
+
 const runStartupCleanup = async () => {
   const cache = getCache();
   if (cache.cleanupDone) return;
   cache.cleanupDone = true;
 
   const users = mongoose.connection.collection("users");
+
   await users.updateMany({ email: null }, { $unset: { email: 1 } });
   await users.updateMany({ userId: null }, { $unset: { userId: 1 } });
-  await users.updateMany({ phone: null }, { $unset: { phone: 1 } });
-  await users.updateMany({ phone: "" }, { $unset: { phone: 1 } });
+  await users.updateMany({ googleId: null }, { $unset: { googleId: 1 } });
   await users.updateMany(
-    { phone: { $regex: /^google_/ } },
+    {
+      $or: [
+        { phone: null },
+        { phone: "" },
+        { phone: { $regex: /^google_/ } },
+      ],
+    },
     { $unset: { phone: 1 } },
   );
+
+  await dropIndexIfExists(users, "phone_1");
+  await dropIndexIfExists(users, "email_1");
+  await dropIndexIfExists(users, "userId_1");
+  await dropIndexIfExists(users, "googleId_1");
+
+  await User.syncIndexes();
 };
 
 const handleConnectionError = (err) => {
@@ -59,6 +83,7 @@ export const ensureDbConnected = async () => {
       .connect(mongoUri, {
         serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
+        autoIndex: false,
       })
       .then(async (connection) => {
         await runStartupCleanup();

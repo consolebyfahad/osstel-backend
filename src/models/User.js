@@ -6,8 +6,6 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       trim: true,
-      sparse: true,
-      unique: true,
     },
     userId: {
       type: String,
@@ -60,8 +58,6 @@ const userSchema = new mongoose.Schema(
     googleId: {
       type: String,
       trim: true,
-      sparse: true,
-      unique: true,
     },
     password: { type: String, minlength: 6 },
   },
@@ -69,8 +65,21 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ role: 1, status: 1 });
-userSchema.index({ phone: 1 }, { unique: true, sparse: true });
-userSchema.index({ email: 1 }, { unique: true, sparse: true });
-userSchema.index({ userId: 1 }, { unique: true, sparse: true });
+userSchema.index(
+  { phone: 1 },
+  { unique: true, partialFilterExpression: { phone: { $gt: "" } } },
+);
+userSchema.index(
+  { email: 1 },
+  { unique: true, partialFilterExpression: { email: { $gt: "" } } },
+);
+userSchema.index(
+  { userId: 1 },
+  { unique: true, partialFilterExpression: { userId: { $gt: "" } } },
+);
+userSchema.index(
+  { googleId: 1 },
+  { unique: true, partialFilterExpression: { googleId: { $gt: "" } } },
+);
 
 export default mongoose.model("User", userSchema);

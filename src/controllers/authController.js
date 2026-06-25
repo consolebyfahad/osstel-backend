@@ -14,6 +14,7 @@ import { formatSubscriptionForClient } from "../utils/trialHelpers.js";
 import { verifyGoogleIdToken } from "../services/googleAuthService.js";
 import {
   buildRandomPasswordHash,
+  cleanupInvalidPhoneValues,
   hasRealPhone,
   isLegacyGooglePhone,
 } from "../utils/googleUserHelpers.js";
@@ -179,30 +180,59 @@ const applyGoogleProfile = async (user, profile) => {
     updateQuery.$unset = { phone: 1 };
   }
 
-  await User.updateOne({ _id: user._id }, updateQuery);
+  try {
+    await User.updateOne({ _id: user._id }, updateQuery);
+  } catch (error) {
+    if (error.code !== 11000) {
+      throw error;
+    }
+
+    const duplicateField = Object.keys(error.keyPattern || {})[0];
+
+    if (duplicateField === "googleId") {
+      const linked =
+        (await User.findOne({ googleId: profile.googleId })) ||
+        (await User.findOne({ email: profile.email }));
+
+      if (linked && String(linked._id) === String(user._id)) {
+        return User.findById(user._id);
+      }
+    }
+
+    throw error;
+  }
 
   return User.findById(user._id);
 };
 
 const createGoogleUser = async (profile) => {
-  const buildPayload = async () => ({
-    name: profile.name,
-    email: profile.email,
-    googleId: profile.googleId,
-    role: "manager",
-    authProvider: "google",
-    profileImage: profile.picture,
-    password: await buildRandomPasswordHash(),
-  });
+  await cleanupInvalidPhoneValues(User);
 
-  const saveCreatedUser = async (payload) => {
-    const user = await User.create(payload);
-    await User.updateOne({ _id: user._id }, { $unset: { phone: 1 } });
-    return User.findById(user._id);
-  };
+  const password = await buildRandomPasswordHash();
 
   try {
-    return await saveCreatedUser(await buildPayload());
+    const user = await User.findOneAndUpdate(
+      { googleId: profile.googleId },
+      {
+        $setOnInsert: {
+          name: profile.name,
+          email: profile.email,
+          googleId: profile.googleId,
+          role: "manager",
+          authProvider: "google",
+          profileImage: profile.picture,
+          password,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    if (!hasRealPhone(user.phone)) {
+      await User.updateOne({ _id: user._id }, { $unset: { phone: 1 } });
+      return User.findById(user._id);
+    }
+
+    return user;
   } catch (error) {
     if (error.code !== 11000) {
       throw error;
@@ -211,13 +241,31 @@ const createGoogleUser = async (profile) => {
     const duplicateField = Object.keys(error.keyPattern || {})[0];
 
     if (duplicateField === "phone") {
-      await User.updateMany(
-        { $or: [{ phone: null }, { phone: "" }] },
-        { $unset: { phone: 1 } },
-      );
+      await cleanupInvalidPhoneValues(User);
 
       try {
-        return await saveCreatedUser(await buildPayload());
+        const user = await User.findOneAndUpdate(
+          { googleId: profile.googleId },
+          {
+            $setOnInsert: {
+              name: profile.name,
+              email: profile.email,
+              googleId: profile.googleId,
+              role: "manager",
+              authProvider: "google",
+              profileImage: profile.picture,
+              password,
+            },
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true },
+        );
+
+        if (!hasRealPhone(user.phone)) {
+          await User.updateOne({ _id: user._id }, { $unset: { phone: 1 } });
+          return User.findById(user._id);
+        }
+
+        return user;
       } catch (retryError) {
         if (retryError.code !== 11000) {
           throw retryError;
@@ -230,6 +278,13 @@ const createGoogleUser = async (profile) => {
       (await User.findOne({ email: profile.email }));
 
     if (!existing) {
+      if (duplicateField === "phone") {
+        throw new AppError(
+          "Google sign-in failed due to a phone data conflict. Please try again.",
+          400,
+        );
+      }
+
       throw error;
     }
 
@@ -252,6 +307,8 @@ export const googleAuth = asyncHandler(async (req, res) => {
   } catch (error) {
     throw new AppError(error.message || "Invalid Google token", 401);
   }
+
+  await cleanupInvalidPhoneValues(User);
 
   let user =
     (await User.findOne({ googleId: profile.googleId })) ||

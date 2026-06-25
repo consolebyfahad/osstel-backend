@@ -11,3 +11,16 @@ export const buildRandomPasswordHash = async () => {
   const random = crypto.randomBytes(32).toString("hex");
   return bcrypt.hash(random, 12);
 };
+
+export const cleanupInvalidPhoneValues = async (UserModel) => {
+  await UserModel.updateMany(
+    {
+      $or: [
+        { phone: null },
+        { phone: "" },
+        { phone: { $regex: /^google_/ } },
+      ],
+    },
+    { $unset: { phone: 1 } },
+  );
+};
