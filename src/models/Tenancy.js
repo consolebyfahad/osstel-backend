@@ -21,6 +21,8 @@ const tenancySchema = new mongoose.Schema(
     checkOutDate: { type: Date, default: null },
     /** Agreed monthly rent for this resident; null falls back to room.rent */
     monthlyRent: { type: Number, min: 0, default: null },
+    /** One-time security deposit collected at check-in */
+    securityDeposit: { type: Number, min: 0, default: 0 },
     status: {
       type: String,
       enum: ["active", "moved_out"],

@@ -38,6 +38,23 @@ const resolveTenancyMonthlyRent = (monthlyRent, roomRent) => {
   return parsed === roomRent ? null : parsed;
 };
 
+const resolveSecurityDeposit = (securityDeposit) => {
+  if (
+    securityDeposit === undefined ||
+    securityDeposit === null ||
+    securityDeposit === ""
+  ) {
+    return 0;
+  }
+
+  const parsed = Number(securityDeposit);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    throw new AppError("securityDeposit must be a non-negative number", 400);
+  }
+
+  return parsed;
+};
+
 export const addResident = asyncHandler(async (req, res) => {
   const {
     hostelId,
@@ -46,6 +63,7 @@ export const addResident = asyncHandler(async (req, res) => {
     cnic,
     roomNumber,
     monthlyRent,
+    securityDeposit,
     profileImage,
     cnicFront,
     cnicBack,
@@ -114,6 +132,7 @@ export const addResident = asyncHandler(async (req, res) => {
     checkInDate: new Date(),
     status: "active",
     monthlyRent: resolveTenancyMonthlyRent(monthlyRent, room.rent),
+    securityDeposit: resolveSecurityDeposit(securityDeposit),
   });
 
   await syncRoomStatus(room._id);
@@ -179,6 +198,7 @@ export const updateResident = asyncHandler(async (req, res) => {
     cnic,
     roomNumber,
     monthlyRent,
+    securityDeposit,
     profileImage,
     cnicFront,
     cnicBack,
@@ -274,6 +294,10 @@ export const updateResident = asyncHandler(async (req, res) => {
       },
       { $set: { amount: getTenancyMonthlyRent(tenancy) } },
     );
+  }
+
+  if (securityDeposit !== undefined) {
+    tenancy.securityDeposit = resolveSecurityDeposit(securityDeposit);
   }
 
   await tenancy.save();

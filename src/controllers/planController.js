@@ -4,6 +4,11 @@ import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { getEffectivePlanId } from "../utils/trialHelpers.js";
+import {
+  canRenewSubscription,
+  isPaidSubscriptionActive,
+  formatSubscriptionPeriodForClient,
+} from "../utils/subscriptionLifecycleHelpers.js";
 
 const normalizePlan = (plan) => (plan === "basic" ? "standard" : plan);
 
@@ -12,12 +17,21 @@ const planRank = { free: 0, standard: 1, basic: 1, premium: 2 };
 export const requestPlanUpgrade = asyncHandler(async (req, res) => {
   const { plan, note } = req.body;
   const currentPlan = getEffectivePlanId(req.user);
+  const renewing = canRenewSubscription(req.user);
+  const requestedPlan = normalizePlan(plan);
 
-  if (planRank[plan] <= planRank[currentPlan]) {
+  if (!renewing && planRank[requestedPlan] <= planRank[currentPlan]) {
     throw new AppError(
       `You are already on ${currentPlan} plan or higher`,
       400
     );
+  }
+
+  if (
+    renewing &&
+    planRank[requestedPlan] < planRank[normalizePlanId(req.user.subscriptionPlan)]
+  ) {
+    throw new AppError("Renewal must be for your current plan or higher", 400);
   }
 
   const existing = await PlanUpgradeRequest.findOne({
@@ -31,7 +45,9 @@ export const requestPlanUpgrade = asyncHandler(async (req, res) => {
 
   const request = await PlanUpgradeRequest.create({
     owner: req.user._id,
-    currentPlan,
+    currentPlan: renewing
+      ? normalizePlanId(req.user.subscriptionPlan)
+      : currentPlan,
     requestedPlan: plan,
     note: note || null,
   });
@@ -70,6 +86,8 @@ export const getMyPlanRequest = asyncHandler(async (req, res) => {
         }
       : null,
     currentPlan: getEffectivePlanId(req.user),
+    canRenew: canRenewSubscription(req.user),
+    subscription: formatSubscriptionPeriodForClient(req.user),
   });
 });
 

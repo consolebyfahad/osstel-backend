@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import AppError from "../utils/AppError.js";
 import { clearExpiredTrialIfNeeded } from "../utils/trialHelpers.js";
+import { clearExpiredSubscriptionIfNeeded } from "../utils/subscriptionLifecycleHelpers.js";
 
 export const protect = async (req, _res, next) => {
   const authHeader = req.headers.authorization;
@@ -24,6 +25,7 @@ export const protect = async (req, _res, next) => {
     }
 
     await clearExpiredTrialIfNeeded(user);
+    await clearExpiredSubscriptionIfNeeded(user);
 
     req.user = user;
     next();

@@ -3,6 +3,7 @@ import { body } from "express-validator";
 import {
   approvePlanRequest,
   cancelOwnerTrial,
+  extendOwnerSubscription,
   getAdminHostelById,
   getAdminHostels,
   getAdminStats,
@@ -67,6 +68,12 @@ router.delete(
   "/owners/:id/trial",
   validateObjectId("id"),
   cancelOwnerTrial
+);
+
+router.post(
+  "/owners/:id/extend-subscription",
+  validateObjectId("id"),
+  extendOwnerSubscription
 );
 
 router.get("/hostels", getAdminHostels);

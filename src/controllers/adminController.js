@@ -17,10 +17,33 @@ import {
   formatTrialForClient,
   getEffectivePlanId,
 } from "../utils/trialHelpers.js";
+import {
+  activatePaidSubscription,
+  extendPaidSubscription,
+  clearPaidSubscription,
+  formatSubscriptionPeriodForClient,
+  isPaidSubscriptionActive,
+  SUBSCRIPTION_PERIOD_DAYS,
+} from "../utils/subscriptionLifecycleHelpers.js";
 import { getPlanConfig } from "../config/plans.js";
 import { notifyUser } from "../services/pushNotificationService.js";
+import { hasRealPhone } from "../utils/googleUserHelpers.js";
 
 const normalizePlan = (plan) => (plan === "basic" ? "standard" : plan);
+
+const formatOwnerContact = (owner) => {
+  const phone = hasRealPhone(owner.phone) ? owner.phone : null;
+  const email = owner.email?.trim() || null;
+  const authProvider = owner.authProvider || "local";
+
+  return {
+    phone: phone || "",
+    email,
+    authProvider,
+    contact: phone || email || "—",
+    contactType: phone ? "phone" : email ? "email" : null,
+  };
+};
 
 const getPlanName = (planId) => getPlanConfig(normalizePlan(planId)).name;
 
@@ -63,12 +86,13 @@ const notifySupportReply = (userId, adminReply, supportRequestId) => {
 const formatOwner = (owner, hostels = []) => ({
   id: owner._id,
   name: owner.name,
-  phone: owner.phone,
+  ...formatOwnerContact(owner),
   role: owner.role,
   status: owner.status || "active",
   subscriptionPlan: normalizePlan(owner.subscriptionPlan || "free"),
   effectivePlan: getEffectivePlanId(owner),
   trial: formatTrialForClient(owner),
+  subscription: formatSubscriptionPeriodForClient(owner),
   hostelsCount: hostels.length,
   hostels: hostels.map((h) => ({
     id: h._id,
@@ -91,6 +115,7 @@ export const getOwners = asyncHandler(async (req, res) => {
     filter.$or = [
       { name: { $regex: search, $options: "i" } },
       { phone: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
     ];
   }
 
@@ -207,6 +232,13 @@ export const updateOwnerPlan = asyncHandler(async (req, res) => {
   owner.subscriptionPlan = plan;
   owner.trialPlan = null;
   owner.trialEndsAt = null;
+
+  if (plan === "free") {
+    clearPaidSubscription(owner);
+  } else {
+    activatePaidSubscription(owner, plan);
+  }
+
   await owner.save();
 
   await PlanUpgradeRequest.updateMany(
@@ -228,6 +260,38 @@ export const updateOwnerPlan = asyncHandler(async (req, res) => {
       subscriptionPlan: normalizePlan(owner.subscriptionPlan),
       effectivePlan: getEffectivePlanId(owner),
       trial: formatTrialForClient(owner),
+      subscription: formatSubscriptionPeriodForClient(owner),
+    },
+  });
+});
+
+export const extendOwnerSubscription = asyncHandler(async (req, res) => {
+  const owner = await User.findOne({ _id: req.params.id, role: "manager" });
+
+  if (!owner) throw new AppError("Owner not found", 404);
+
+  if (!isPaidSubscriptionActive(owner) && normalizePlan(owner.subscriptionPlan) === "free") {
+    throw new AppError("Owner does not have an active paid subscription to extend", 400);
+  }
+
+  extendPaidSubscription(owner);
+  await owner.save();
+
+  void notifyUser(owner._id, {
+    title: "Subscription extended",
+    body: `Your plan has been extended for ${SUBSCRIPTION_PERIOD_DAYS} more days.`,
+    type: "subscription_extended",
+    data: { url: "/subscription" },
+  });
+
+  return success(res, "Subscription extended by 1 month", {
+    owner: {
+      id: owner._id,
+      name: owner.name,
+      subscriptionPlan: normalizePlan(owner.subscriptionPlan),
+      effectivePlan: getEffectivePlanId(owner),
+      trial: formatTrialForClient(owner),
+      subscription: formatSubscriptionPeriodForClient(owner),
     },
   });
 });
@@ -462,8 +526,7 @@ export const approvePlanRequest = asyncHandler(async (req, res) => {
   }
 
   request.owner.subscriptionPlan = request.requestedPlan;
-  request.owner.trialPlan = null;
-  request.owner.trialEndsAt = null;
+  activatePaidSubscription(request.owner, request.requestedPlan);
   await request.owner.save();
 
   request.status = "approved";
@@ -475,7 +538,8 @@ export const approvePlanRequest = asyncHandler(async (req, res) => {
   notifyPlanUpgrade(
     request.owner._id,
     request.requestedPlan,
-    request.adminNote,
+    request.adminNote ||
+      `Your ${getPlanName(request.requestedPlan)} plan is active for ${SUBSCRIPTION_PERIOD_DAYS} days.`,
   );
 
   return success(res, "Plan request approved successfully", {

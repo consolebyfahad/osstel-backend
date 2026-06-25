@@ -1,5 +1,9 @@
 import { normalizePlanId } from "../config/plans.js";
 import User from "../models/User.js";
+import {
+  getEffectivePaidPlanId,
+  isPaidSubscriptionActive,
+} from "./subscriptionLifecycleHelpers.js";
 
 export const TRIAL_PLAN = "premium";
 export const TRIAL_DURATIONS = [10, 20, 30];
@@ -9,12 +13,7 @@ export const isTrialActive = (user) => {
   return new Date(user.trialEndsAt) > new Date();
 };
 
-export const getEffectivePlanId = (user) => {
-  if (isTrialActive(user)) {
-    return normalizePlanId(user.trialPlan);
-  }
-  return normalizePlanId(user.subscriptionPlan);
-};
+export const getEffectivePlanId = (user) => getEffectivePaidPlanId(user);
 
 export const clearExpiredTrialIfNeeded = async (user) => {
   if (!user?.trialEndsAt || !user?.trialPlan) return false;
@@ -41,10 +40,15 @@ export const formatTrialForClient = (user) => {
   };
 };
 
+import {
+  formatSubscriptionPeriodForClient,
+} from "./subscriptionLifecycleHelpers.js";
+
 export const formatSubscriptionForClient = (user) => ({
   subscriptionPlan: getEffectivePlanId(user),
   baseSubscriptionPlan: normalizePlanId(user.subscriptionPlan),
   trial: formatTrialForClient(user),
+  subscription: formatSubscriptionPeriodForClient(user),
 });
 
 export const expireAllTrials = async () => {

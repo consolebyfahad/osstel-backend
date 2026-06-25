@@ -50,6 +50,18 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    planStartedAt: {
+      type: Date,
+      default: null,
+    },
+    planExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    planExpiryReminderSentAt: {
+      type: Date,
+      default: null,
+    },
     authProvider: {
       type: String,
       enum: ["local", "google"],

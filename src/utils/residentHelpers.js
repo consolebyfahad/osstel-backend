@@ -51,6 +51,7 @@ export const formatResident = (tenancy) => ({
   roomId: tenancy.room._id,
   roomRent: tenancy.room.rent ?? null,
   monthlyRent: tenancy.monthlyRent ?? null,
+  securityDeposit: tenancy.securityDeposit ?? 0,
   hostelId: tenancy.hostel,
   checkInDate: tenancy.checkInDate,
   createdAt: tenancy.createdAt,

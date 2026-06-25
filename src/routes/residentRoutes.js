@@ -68,6 +68,10 @@ router.post(
       .optional({ values: "null" })
       .isFloat({ min: 0 })
       .withMessage("monthlyRent must be a non-negative number"),
+    body("securityDeposit")
+      .optional({ values: "null" })
+      .isFloat({ min: 0 })
+      .withMessage("securityDeposit must be a non-negative number"),
     ...residentProfileValidators,
   ],
   validate,
@@ -96,6 +100,10 @@ router.put(
       .optional({ values: "null" })
       .isFloat({ min: 0 })
       .withMessage("monthlyRent must be a non-negative number"),
+    body("securityDeposit")
+      .optional({ values: "null" })
+      .isFloat({ min: 0 })
+      .withMessage("securityDeposit must be a non-negative number"),
     ...residentProfileValidators,
   ],
   validate,
