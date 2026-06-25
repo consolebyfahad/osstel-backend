@@ -20,6 +20,7 @@ import {
   filterRentRecords,
   formatRentRecord,
   formatTenancyContext,
+  getEligibleRentMonths,
   getManagerHostel,
   syncMonthlyRent,
 } from "../utils/rentHelpers.js";
@@ -333,13 +334,24 @@ export const getMyRentHistory = asyncHandler(async (req, res) => {
     });
   }
 
-  for (let month = 1; month <= 12; month += 1) {
+  const eligibleMonths = getEligibleRentMonths(tenancy, targetYear, now);
+
+  for (const month of eligibleMonths) {
     await ensureResidentRentRecord(req.user._id, month, targetYear);
+  }
+
+  if (eligibleMonths.length === 0) {
+    return success(res, "Rent history fetched successfully", {
+      year: targetYear,
+      summary: buildResidentYearSummary([]),
+      history: [],
+    });
   }
 
   const payments = await Payment.find({
     resident: req.user._id,
     year: targetYear,
+    month: { $in: eligibleMonths },
   })
     .populate("room", "roomNumber rent")
     .populate("hostel", "name")

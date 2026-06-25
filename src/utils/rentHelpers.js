@@ -11,8 +11,56 @@ export const getTenancyMonthlyRent = (tenancy) => {
   return tenancy.room?.rent ?? 0;
 };
 
+/** First and last calendar month (1–12) a tenancy should have rent for a given year. */
+export const getTenancyRentMonthBounds = (tenancy, targetYear, now = new Date()) => {
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  if (targetYear > currentYear) {
+    return { startMonth: null, endMonth: null };
+  }
+
+  const checkIn = tenancy?.checkInDate ? new Date(tenancy.checkInDate) : null;
+  if (!checkIn || Number.isNaN(checkIn.getTime())) {
+    const endMonth = targetYear < currentYear ? 12 : currentMonth;
+    return { startMonth: 1, endMonth };
+  }
+
+  const checkInYear = checkIn.getFullYear();
+  const checkInMonth = checkIn.getMonth() + 1;
+
+  if (targetYear < checkInYear) {
+    return { startMonth: null, endMonth: null };
+  }
+
+  const startMonth = targetYear > checkInYear ? 1 : checkInMonth;
+  const endMonth = targetYear < currentYear ? 12 : currentMonth;
+
+  if (startMonth > endMonth) {
+    return { startMonth: null, endMonth: null };
+  }
+
+  return { startMonth, endMonth };
+};
+
+export const getEligibleRentMonths = (tenancy, targetYear, now = new Date()) => {
+  const { startMonth, endMonth } = getTenancyRentMonthBounds(
+    tenancy,
+    targetYear,
+    now,
+  );
+  if (startMonth == null || endMonth == null) return [];
+
+  const months = [];
+  for (let month = startMonth; month <= endMonth; month += 1) {
+    months.push(month);
+  }
+  return months;
+};
+
 export const syncMonthlyRent = async (hostelId, month, year) => {
   const dueDate = new Date(year, month - 1, 1);
+  const now = new Date();
 
   const tenancies = await Tenancy.find({
     hostel: hostelId,
@@ -21,6 +69,9 @@ export const syncMonthlyRent = async (hostelId, month, year) => {
 
   for (const tenancy of tenancies) {
     if (!tenancy.room?._id) continue;
+
+    const eligibleMonths = getEligibleRentMonths(tenancy, year, now);
+    if (!eligibleMonths.includes(month)) continue;
 
     try {
       const existing = await Payment.findOne({
@@ -58,6 +109,11 @@ export const ensureResidentRentRecord = async (residentId, month, year) => {
 
   if (!tenancy || !tenancy.room?._id) {
     return { tenancy: null, payment: null };
+  }
+
+  const eligibleMonths = getEligibleRentMonths(tenancy, year);
+  if (!eligibleMonths.includes(month)) {
+    return { tenancy, payment: null };
   }
 
   const dueDate = new Date(year, month - 1, 1);
