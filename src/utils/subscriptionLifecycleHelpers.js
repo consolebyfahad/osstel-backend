@@ -19,7 +19,8 @@ export const getSubscriptionDaysRemaining = (user, now = new Date()) => {
 export const isPaidSubscriptionActive = (user, now = new Date()) => {
   const plan = normalizePlanId(user?.subscriptionPlan);
   if (plan === "free") return false;
-  if (!user?.planExpiresAt) return true;
+  if (isTrialActive(user)) return false;
+  if (!user?.planExpiresAt) return false;
   return new Date(user.planExpiresAt) > now;
 };
 
@@ -79,8 +80,18 @@ export const clearPaidSubscription = (user) => {
 };
 
 export const clearExpiredSubscriptionIfNeeded = async (user) => {
-  if (!user?.planExpiresAt || normalizePlanId(user.subscriptionPlan) === "free") {
+  if (normalizePlanId(user.subscriptionPlan) === "free") {
     return false;
+  }
+
+  if (isTrialActive(user)) {
+    return false;
+  }
+
+  if (!user?.planExpiresAt) {
+    clearPaidSubscription(user);
+    await user.save();
+    return true;
   }
 
   if (new Date(user.planExpiresAt) > new Date()) return false;
@@ -169,12 +180,16 @@ export const expireAllSubscriptions = async () => {
   const owners = await User.find({
     role: "manager",
     subscriptionPlan: { $ne: "free" },
-    planExpiresAt: { $ne: null, $lte: now },
+    $or: [{ planExpiresAt: null }, { planExpiresAt: { $lte: now } }],
   });
 
   let expired = 0;
 
   for (const owner of owners) {
+    if (isTrialActive(owner)) {
+      continue;
+    }
+
     const previousPlan = normalizePlanId(owner.subscriptionPlan);
     clearPaidSubscription(owner);
     await owner.save();

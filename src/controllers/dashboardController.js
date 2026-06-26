@@ -1,10 +1,16 @@
 import Hostel from "../models/Hostel.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
-import { getHostelDashboardStats } from "../utils/hostelStats.js";
+import {
+  getHostelDashboardStats,
+  filterDashboardStatsForPlan,
+} from "../utils/hostelStats.js";
 import { getRecentActivities } from "../utils/activityFeed.js";
 import AppError from "../utils/AppError.js";
 import { requireManagerHostel } from "../utils/hostelHelpers.js";
+import {
+  getEffectivePlanId,
+} from "../utils/trialHelpers.js";
 import {
   assertHasFeature,
   PLAN_FEATURES,
@@ -12,6 +18,7 @@ import {
 
 export const getDashboard = asyncHandler(async (req, res) => {
   const { hostelId } = req.query;
+  const planId = getEffectivePlanId(req.user);
   const hostels = await Hostel.find({ manager: req.user._id }).lean();
 
   if (!hostels.length) {
@@ -25,7 +32,10 @@ export const getDashboard = asyncHandler(async (req, res) => {
       throw new AppError("Hostel not found", 404);
     }
 
-    const stats = await getHostelDashboardStats(hostel._id);
+    const stats = filterDashboardStatsForPlan(
+      await getHostelDashboardStats(hostel._id),
+      planId,
+    );
 
     return success(res, "Dashboard fetched successfully", {
       hostel: { id: hostel._id, name: hostel.name },
@@ -35,7 +45,10 @@ export const getDashboard = asyncHandler(async (req, res) => {
 
   const hostelsWithStats = await Promise.all(
     hostels.map(async (hostel) => {
-      const stats = await getHostelDashboardStats(hostel._id);
+      const stats = filterDashboardStatsForPlan(
+        await getHostelDashboardStats(hostel._id),
+        planId,
+      );
       return {
         hostel: { id: hostel._id, name: hostel.name },
         ...stats,

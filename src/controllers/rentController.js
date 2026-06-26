@@ -284,7 +284,7 @@ export const markRentPaid = asyncHandler(async (req, res) => {
 });
 
 export const sendRentAlert = asyncHandler(async (req, res) => {
-  assertHasFeature(req.user, PLAN_FEATURES.notifications);
+  assertHasFeature(req.user, PLAN_FEATURES.rent_reminders);
 
   const payment = await getPaymentForUser(req.params.id, req.user);
 

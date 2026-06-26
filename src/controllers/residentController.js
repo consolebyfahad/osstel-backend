@@ -344,7 +344,7 @@ export const sendResidentRentAlert = asyncHandler(async (req, res) => {
 
   const customMessage = req.body.message?.trim();
 
-  assertHasFeature(req.user, PLAN_FEATURES.notifications);
+  assertHasFeature(req.user, PLAN_FEATURES.rent_reminders);
 
   const residentId = tenancy.resident._id ?? tenancy.resident;
 

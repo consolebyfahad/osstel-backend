@@ -3,6 +3,7 @@ import Room from "../models/Room.js";
 import Tenancy from "../models/Tenancy.js";
 import Payment from "../models/Payment.js";
 import Complaint from "../models/Complaint.js";
+import { getPlanConfig } from "../config/plans.js";
 
 export const getHostelDashboardStats = async (hostelId) => {
   const now = new Date();
@@ -117,4 +118,29 @@ export const getHostelDashboardStats = async (hostelId) => {
       breakdown: complaintsByStatus,
     },
   };
+};
+
+const emptyComplaints = {
+  total: 0,
+  open: 0,
+  resolved: 0,
+  breakdown: { open: 0, in_progress: 0, resolved: 0 },
+};
+
+export const filterDashboardStatsForPlan = (stats, planId) => {
+  const plan = getPlanConfig(planId);
+  const filtered = { ...stats, rooms: { ...stats.rooms } };
+
+  if (!plan.features.complaints) {
+    filtered.complaints = emptyComplaints;
+  }
+
+  if (!plan.features.payment_proof) {
+    filtered.monthlyCollection = {
+      ...stats.monthlyCollection,
+      review: 0,
+    };
+  }
+
+  return filtered;
 };
