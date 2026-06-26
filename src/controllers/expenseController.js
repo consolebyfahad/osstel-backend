@@ -7,8 +7,13 @@ import {
   formatExpense,
   parseExpensePeriod,
 } from "../utils/expenseHelpers.js";
+import {
+  assertHasFeature,
+  PLAN_FEATURES,
+} from "../utils/subscriptionHelpers.js";
 
 export const createExpense = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.expense_tracking);
   const { hostelId, title, details, amount, image, month, year } = req.body;
 
   const hostel = await getManagerHostel(hostelId, req.user._id);
@@ -58,6 +63,7 @@ export const createExpense = asyncHandler(async (req, res) => {
 });
 
 export const getExpenses = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.expense_tracking);
   const { hostelId } = req.query;
   const { month, year } = parseExpensePeriod(req.query);
 
@@ -91,6 +97,7 @@ export const getExpenses = asyncHandler(async (req, res) => {
 });
 
 export const getExpenseSummary = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.expense_tracking);
   const { month, year } = parseExpensePeriod(req.query);
   const hostelIds = req.query.hostelIds
     ? String(req.query.hostelIds)

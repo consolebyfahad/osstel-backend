@@ -1,4 +1,4 @@
-import { getPlansCatalog } from "../config/plans.js";
+import { getPlansCatalog, normalizePlanId } from "../config/plans.js";
 import PlanUpgradeRequest from "../models/PlanUpgradeRequest.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";

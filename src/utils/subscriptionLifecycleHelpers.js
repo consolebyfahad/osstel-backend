@@ -36,11 +36,13 @@ export const activatePaidSubscription = (
   days = SUBSCRIPTION_PERIOD_DAYS,
 ) => {
   user.subscriptionPlan = normalizePlanId(plan);
+  user.baseSubscriptionPlan = null;
   user.planStartedAt = now;
   user.planExpiresAt = addSubscriptionDays(now, days);
   user.planExpiryReminderSentAt = null;
   user.trialPlan = null;
   user.trialEndsAt = null;
+  user.trialExpiryReminderSentAt = null;
 };
 
 export const extendPaidSubscription = (
@@ -67,9 +69,13 @@ export const extendPaidSubscription = (
 
 export const clearPaidSubscription = (user) => {
   user.subscriptionPlan = "free";
+  user.baseSubscriptionPlan = null;
   user.planStartedAt = null;
   user.planExpiresAt = null;
   user.planExpiryReminderSentAt = null;
+  user.trialPlan = null;
+  user.trialEndsAt = null;
+  user.trialExpiryReminderSentAt = null;
 };
 
 export const clearExpiredSubscriptionIfNeeded = async (user) => {
@@ -144,7 +150,7 @@ export const sendSubscriptionExpiryReminders = async () => {
     const daysRemaining = getSubscriptionDaysRemaining(owner, now);
     await notifyUser(owner._id, {
       title: "Subscription ending soon",
-      body: `Your ${normalizePlanId(owner.subscriptionPlan) === "premium" ? "Pro" : "Starter"} plan ends in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}. Submit a renewal request to keep access.`,
+      body: `Your ${normalizePlanId(owner.subscriptionPlan) === "premium" ? "Pro" : "Standard"} plan ends in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}. Submit a renewal request to keep access.`,
       type: "subscription_expiring",
       data: { url: "/subscription" },
     });
@@ -175,7 +181,7 @@ export const expireAllSubscriptions = async () => {
 
     await notifyUser(owner._id, {
       title: "Subscription ended",
-      body: `Your ${previousPlan === "premium" ? "Pro" : "Starter"} plan has ended. Submit a new request to activate again.`,
+      body: `Your ${previousPlan === "premium" ? "Pro" : "Standard"} plan has ended. Submit a new request to activate again.`,
       type: "subscription_expired",
       data: { url: "/subscription" },
     });
@@ -188,10 +194,12 @@ export const expireAllSubscriptions = async () => {
 
 export const getEffectivePaidPlanId = (user) => {
   if (isTrialActive(user)) {
-    return normalizePlanId(user.trialPlan);
+    return normalizePlanId(user.subscriptionPlan);
   }
+
   if (isPaidSubscriptionActive(user)) {
     return normalizePlanId(user.subscriptionPlan);
   }
+
   return "free";
 };

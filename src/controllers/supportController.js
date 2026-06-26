@@ -4,8 +4,18 @@ import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { buildPagination, getPagination } from "../utils/pagination.js";
 import { formatSupportRequest } from "../utils/supportHelpers.js";
+import {
+  assertHasFeature,
+  assertResidentManagerFeature,
+  PLAN_FEATURES,
+} from "../utils/subscriptionHelpers.js";
 
 export const submitSupportRequest = asyncHandler(async (req, res) => {
+  if (req.user.role === "resident") {
+    await assertResidentManagerFeature(req.user._id, PLAN_FEATURES.support);
+  } else {
+    assertHasFeature(req.user, PLAN_FEATURES.support);
+  }
   const { subject, message, category } = req.body;
 
   const request = await SupportRequest.create({
@@ -24,6 +34,11 @@ export const submitSupportRequest = asyncHandler(async (req, res) => {
 });
 
 export const getMySupportRequests = asyncHandler(async (req, res) => {
+  if (req.user.role === "resident") {
+    await assertResidentManagerFeature(req.user._id, PLAN_FEATURES.support);
+  } else {
+    assertHasFeature(req.user, PLAN_FEATURES.support);
+  }
   const { page, limit, skip } = getPagination(req.query);
 
   const [requests, total] = await Promise.all([
@@ -42,6 +57,11 @@ export const getMySupportRequests = asyncHandler(async (req, res) => {
 });
 
 export const getMySupportRequestById = asyncHandler(async (req, res) => {
+  if (req.user.role === "resident") {
+    await assertResidentManagerFeature(req.user._id, PLAN_FEATURES.support);
+  } else {
+    assertHasFeature(req.user, PLAN_FEATURES.support);
+  }
   const request = await SupportRequest.findOne({
     _id: req.params.id,
     user: req.user._id,

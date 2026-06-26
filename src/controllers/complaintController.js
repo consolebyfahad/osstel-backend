@@ -10,8 +10,14 @@ import {
   formatComplaints,
   getActiveTenancy,
 } from "../utils/complaintHelpers.js";
+import {
+  assertHasFeature,
+  assertResidentManagerFeature,
+  PLAN_FEATURES,
+} from "../utils/subscriptionHelpers.js";
 
 export const createComplaint = asyncHandler(async (req, res) => {
+  await assertResidentManagerFeature(req.user._id, PLAN_FEATURES.complaints);
   const { title, description } = req.body;
 
   const tenancy = await getActiveTenancy(req.user._id);
@@ -53,6 +59,7 @@ export const createComplaint = asyncHandler(async (req, res) => {
 });
 
 export const getMyComplaints = asyncHandler(async (req, res) => {
+  await assertResidentManagerFeature(req.user._id, PLAN_FEATURES.complaints);
   const { status } = req.query;
   const { page, limit, skip } = getPagination(req.query);
 
@@ -77,6 +84,7 @@ export const getMyComplaints = asyncHandler(async (req, res) => {
 });
 
 export const getComplaints = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.complaints);
   const { hostelId, status } = req.query;
   const { page, limit, skip } = getPagination(req.query);
 
@@ -106,6 +114,7 @@ export const getComplaints = asyncHandler(async (req, res) => {
 });
 
 export const updateComplaintStatus = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.complaints);
   const { status } = req.body;
 
   const complaint = await Complaint.findById(req.params.id);

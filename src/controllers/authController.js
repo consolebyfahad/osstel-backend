@@ -9,7 +9,6 @@ import {
   revokeRefreshToken,
   verifyRefreshToken,
 } from "../services/tokenService.js";
-import { assertResidentMobileAppAccess } from "../utils/subscriptionHelpers.js";
 import { formatSubscriptionForClient } from "../utils/trialHelpers.js";
 import { verifyGoogleIdToken } from "../services/googleAuthService.js";
 import {
@@ -100,10 +99,6 @@ export const login = asyncHandler(async (req, res) => {
 
   if (user.status === "blocked") {
     throw new AppError("Your account has been blocked. Contact support.", 403);
-  }
-
-  if (user.role === "resident") {
-    await assertResidentMobileAppAccess(user._id);
   }
 
   await revokeAllUserTokens(user._id);

@@ -1,5 +1,13 @@
 import Payment from "../models/Payment.js";
+import User from "../models/User.js";
 import { notifyUser } from "../services/pushNotificationService.js";
+import {
+  getEffectivePlanId,
+} from "./trialHelpers.js";
+import {
+  hasFeature,
+  PLAN_FEATURES,
+} from "./subscriptionHelpers.js";
 
 const MONTH_NAMES = [
   "January",
@@ -65,12 +73,33 @@ export async function sendMonthlyRentReminders() {
     year,
     status: { $in: ["pending", "rejected"] },
     reminderSentForPeriod: { $ne: periodKey },
-  }).select("_id resident amount month year");
+  })
+    .select("_id resident amount month year hostel")
+    .populate("hostel", "manager");
 
   let sent = 0;
+  let skipped = 0;
 
   for (const payment of payments) {
     try {
+      const managerId = payment.hostel?.manager;
+      if (managerId) {
+        const manager = await User.findById(managerId)
+          .select(
+            "subscriptionPlan baseSubscriptionPlan trialPlan trialEndsAt planExpiresAt",
+          )
+          .lean();
+        const reminderAllowed = manager
+          ? hasFeature(getEffectivePlanId(manager), PLAN_FEATURES.rent_reminders)
+              .allowed
+          : false;
+
+        if (!reminderAllowed) {
+          skipped += 1;
+          continue;
+        }
+      }
+
       await notifyRentReminder(payment.resident, payment, {
         type: "rent_reminder_monthly",
         title: `${formatRentPeriodLabel(month, year)} rent due`,
@@ -89,5 +118,5 @@ export async function sendMonthlyRentReminders() {
     }
   }
 
-  return { sent, month, year, skipped: false };
+  return { sent, skipped, month, year, skippedAll: false };
 }

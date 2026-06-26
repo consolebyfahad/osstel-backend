@@ -7,6 +7,20 @@ import {
   registerPushToken,
   removePushToken,
 } from "../services/pushNotificationService.js";
+import {
+  assertHasFeature,
+  assertResidentManagerFeature,
+  PLAN_FEATURES,
+} from "../utils/subscriptionHelpers.js";
+
+const assertNotificationAccess = async (user) => {
+  if (user.role === "resident") {
+    await assertResidentManagerFeature(user._id, PLAN_FEATURES.notifications);
+    return;
+  }
+
+  assertHasFeature(user, PLAN_FEATURES.notifications);
+};
 
 const formatNotification = (item) => ({
   id: item._id,
@@ -19,6 +33,7 @@ const formatNotification = (item) => ({
 });
 
 export const registerMyPushToken = asyncHandler(async (req, res) => {
+  await assertNotificationAccess(req.user);
   const { token, provider = "fcm", platform, deviceId } = req.body;
 
   if (!token?.trim()) {
@@ -47,6 +62,7 @@ export const removeMyPushToken = asyncHandler(async (req, res) => {
 });
 
 export const getNotifications = asyncHandler(async (req, res) => {
+  await assertNotificationAccess(req.user);
   const { page, limit, skip } = getPagination(req.query);
 
   const [items, total, unreadCount] = await Promise.all([
@@ -67,6 +83,7 @@ export const getNotifications = asyncHandler(async (req, res) => {
 });
 
 export const markNotificationRead = asyncHandler(async (req, res) => {
+  await assertNotificationAccess(req.user);
   const notification = await Notification.findOne({
     _id: req.params.id,
     user: req.user._id,
@@ -85,6 +102,7 @@ export const markNotificationRead = asyncHandler(async (req, res) => {
 });
 
 export const markAllNotificationsRead = asyncHandler(async (req, res) => {
+  await assertNotificationAccess(req.user);
   await Notification.updateMany(
     { user: req.user._id, readAt: null },
     { $set: { readAt: new Date() } },
@@ -94,6 +112,7 @@ export const markAllNotificationsRead = asyncHandler(async (req, res) => {
 });
 
 export const getUnreadNotificationCount = asyncHandler(async (req, res) => {
+  await assertNotificationAccess(req.user);
   const unreadCount = await Notification.countDocuments({
     user: req.user._id,
     readAt: null,

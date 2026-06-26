@@ -14,8 +14,10 @@ import { buildPagination, getPagination } from "../utils/pagination.js";
 import {
   TRIAL_DURATIONS,
   TRIAL_PLAN,
+  cancelActiveTrial,
   formatTrialForClient,
   getEffectivePlanId,
+  grantProTrial,
 } from "../utils/trialHelpers.js";
 import {
   activatePaidSubscription,
@@ -89,7 +91,10 @@ const formatOwner = (owner, hostels = []) => ({
   ...formatOwnerContact(owner),
   role: owner.role,
   status: owner.status || "active",
-  subscriptionPlan: normalizePlan(owner.subscriptionPlan || "free"),
+  subscriptionPlan: normalizePlan(getEffectivePlanId(owner)),
+  baseSubscriptionPlan: owner.baseSubscriptionPlan
+    ? normalizePlan(owner.baseSubscriptionPlan)
+    : normalizePlan(owner.subscriptionPlan || "free"),
   effectivePlan: getEffectivePlanId(owner),
   trial: formatTrialForClient(owner),
   subscription: formatSubscriptionPeriodForClient(owner),
@@ -307,8 +312,7 @@ export const grantOwnerTrial = asyncHandler(async (req, res) => {
 
   if (!owner) throw new AppError("Owner not found", 404);
 
-  owner.trialPlan = TRIAL_PLAN;
-  owner.trialEndsAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  grantProTrial(owner, days);
   await owner.save();
 
   void notifyUser(owner._id, {
@@ -338,13 +342,12 @@ export const cancelOwnerTrial = asyncHandler(async (req, res) => {
     throw new AppError("This owner does not have an active trial", 400);
   }
 
-  owner.trialPlan = null;
-  owner.trialEndsAt = null;
+  cancelActiveTrial(owner);
   await owner.save();
 
   void notifyUser(owner._id, {
     title: "Pro trial ended",
-    body: "Your Pro trial was ended early. Your subscription plan is unchanged.",
+    body: "Your Pro trial was ended early. Your plan has been restored.",
     type: "trial_cancelled",
     data: { url: "/subscription" },
   });

@@ -11,6 +11,7 @@ import {
 } from "../utils/rentNotificationHelpers.js";
 import {
   assertHasFeature,
+  assertResidentManagerFeature,
   PLAN_FEATURES,
 } from "../utils/subscriptionHelpers.js";
 import {
@@ -141,6 +142,7 @@ export const getRentCollection = asyncHandler(async (req, res) => {
 });
 
 export const submitRentPayment = asyncHandler(async (req, res) => {
+  await assertResidentManagerFeature(req.user._id, PLAN_FEATURES.payment_proof);
   const { paymentProof, note } = req.body;
   const payment = await getPaymentForUser(req.params.id, req.user);
 
@@ -180,6 +182,7 @@ export const submitRentPayment = asyncHandler(async (req, res) => {
 export const submitRentForReview = submitRentPayment;
 
 export const updateRentStatus = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.payment_proof);
   const { status, rejectionReason } = req.body;
   const payment = await getPaymentForUser(req.params.id, req.user);
   const record = await applyRentStatusUpdate(payment, {
@@ -243,6 +246,7 @@ const applyRentStatusUpdate = async (payment, { status, rejectionReason, reviewe
 };
 
 export const approveRent = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.payment_proof);
   const payment = await getPaymentForUser(req.params.id, req.user);
 
   if (payment.status !== "review") {
@@ -258,6 +262,7 @@ export const approveRent = asyncHandler(async (req, res) => {
 });
 
 export const rejectRent = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.payment_proof);
   const payment = await getPaymentForUser(req.params.id, req.user);
   const record = await applyRentStatusUpdate(payment, {
     status: "rejected",

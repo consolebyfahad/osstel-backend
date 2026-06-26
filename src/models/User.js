@@ -41,12 +41,21 @@ const userSchema = new mongoose.Schema(
       enum: ["free", "standard", "premium"],
       default: "free",
     },
+    baseSubscriptionPlan: {
+      type: String,
+      enum: ["free", "standard", "premium", null],
+      default: null,
+    },
     trialPlan: {
       type: String,
-      enum: ["standard", "premium", null],
+      enum: ["premium", null],
       default: null,
     },
     trialEndsAt: {
+      type: Date,
+      default: null,
+    },
+    trialExpiryReminderSentAt: {
       type: Date,
       default: null,
     },

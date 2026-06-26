@@ -5,6 +5,7 @@ import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { getManagerUsage } from "../utils/subscriptionHelpers.js";
+import { getResidentPlanContext } from "../utils/subscriptionHelpers.js";
 import { formatSubscriptionForClient } from "../utils/trialHelpers.js";
 import bcrypt from "bcryptjs";
 
@@ -83,6 +84,10 @@ const buildProfile = async (user) => {
             : tenancy.room.rent,
         defaultRent: tenancy.room.rent,
       };
+
+      const planContext = await getResidentPlanContext(user._id);
+      profile.managerPlan = planContext.managerPlan;
+      profile.planFeatures = planContext.planFeatures;
     }
   }
 

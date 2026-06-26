@@ -5,6 +5,10 @@ import { getHostelDashboardStats } from "../utils/hostelStats.js";
 import { getRecentActivities } from "../utils/activityFeed.js";
 import AppError from "../utils/AppError.js";
 import { requireManagerHostel } from "../utils/hostelHelpers.js";
+import {
+  assertHasFeature,
+  PLAN_FEATURES,
+} from "../utils/subscriptionHelpers.js";
 
 export const getDashboard = asyncHandler(async (req, res) => {
   const { hostelId } = req.query;
@@ -45,6 +49,7 @@ export const getDashboard = asyncHandler(async (req, res) => {
 });
 
 export const getRecentActivitiesFeed = asyncHandler(async (req, res) => {
+  assertHasFeature(req.user, PLAN_FEATURES.reports);
   const { hostelId, limit = 20 } = req.query;
 
   if (!hostelId) {

@@ -1,6 +1,6 @@
 import { syncCurrentMonthRentForAllResidents } from "../src/utils/rentHelpers.js";
 import { sendMonthlyRentReminders } from "../src/utils/rentNotificationHelpers.js";
-import { expireAllTrials } from "../src/utils/trialHelpers.js";
+import { expireAllTrials, sendTrialExpiryReminders } from "../src/utils/trialHelpers.js";
 import {
   expireAllSubscriptions,
   sendSubscriptionExpiryReminders,
@@ -25,6 +25,7 @@ export default async function handler(req, res) {
     const syncResult = await syncCurrentMonthRentForAllResidents();
     const reminderResult = await sendMonthlyRentReminders();
     const expiredTrials = await expireAllTrials();
+    const trialExpiryReminders = await sendTrialExpiryReminders();
     const expiryReminders = await sendSubscriptionExpiryReminders();
     const expiredSubscriptions = await expireAllSubscriptions();
 
@@ -35,6 +36,7 @@ export default async function handler(req, res) {
         sync: syncResult,
         reminders: reminderResult,
         expiredTrials,
+        trialExpiryReminders,
         expiryReminders,
         expiredSubscriptions,
       },

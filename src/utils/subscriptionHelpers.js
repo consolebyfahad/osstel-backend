@@ -79,19 +79,7 @@ export const canAddRoom = (planId, currentRooms) => {
   return { allowed: true };
 };
 
-export const canAddTenant = (planId, currentTenants) => {
-  const plan = getPlanConfig(planId);
-  const limit = plan.limits.maxTenants;
-
-  if (currentTenants >= limit) {
-    return {
-      allowed: false,
-      message: buildLimitMessage("tenant", planId, limit),
-    };
-  }
-
-  return { allowed: true };
-};
+export const canAddTenant = () => ({ allowed: true });
 
 export const hasFeature = (planId, featureName) => {
   const plan = getPlanConfig(planId);
@@ -106,6 +94,11 @@ export const hasFeature = (planId, featureName) => {
     allowed: false,
     message: `This feature is available in a higher plan. Upgrade to ${upgradePlan} to continue.`,
   };
+};
+
+export const getPlanFeaturesForClient = (planId) => {
+  const plan = getPlanConfig(planId);
+  return { ...plan.features };
 };
 
 export const assertCanAddHostel = async (user) => {
@@ -128,15 +121,7 @@ export const assertCanAddRoom = async (user) => {
   }
 };
 
-export const assertCanAddTenant = async (user) => {
-  const planId = getEffectivePlanId(user);
-  const usage = await getManagerUsage(user._id);
-  const check = canAddTenant(planId, usage.tenants);
-
-  if (!check.allowed) {
-    throw new AppError(check.message, 403);
-  }
-};
+export const assertCanAddTenant = async () => {};
 
 export const assertHasFeature = (user, featureName) => {
   const planId = getEffectivePlanId(user);
@@ -147,34 +132,58 @@ export const assertHasFeature = (user, featureName) => {
   }
 };
 
-export const assertResidentMobileAppAccess = async (residentUserId) => {
+export const getManagerForResident = async (residentUserId) => {
   const tenancy = await Tenancy.findOne({
     resident: residentUserId,
     status: "active",
   }).lean();
 
   if (!tenancy) {
-    return;
+    return null;
   }
 
   const hostel = await Hostel.findById(tenancy.hostel).select("manager").lean();
   if (!hostel?.manager) {
-    return;
+    return null;
   }
 
-  const manager = await User.findById(hostel.manager)
-    .select("subscriptionPlan trialPlan trialEndsAt")
+  return User.findById(hostel.manager)
+    .select(
+      "subscriptionPlan baseSubscriptionPlan trialPlan trialEndsAt planExpiresAt planStartedAt",
+    )
     .lean();
+};
+
+export const assertResidentManagerFeature = async (
+  residentUserId,
+  featureName,
+) => {
+  const manager = await getManagerForResident(residentUserId);
   if (!manager) {
-    return;
+    throw new AppError("No active hostel tenancy found", 400);
   }
 
-  const check = hasFeature(getEffectivePlanId(manager), PLAN_FEATURES.tenant_mobile_app);
-
+  const check = hasFeature(getEffectivePlanId(manager), featureName);
   if (!check.allowed) {
     throw new AppError(
-      "The resident mobile app is not available on your hostel's current plan. Please contact your hostel manager.",
+      "This feature is not available on your hostel's current plan. Please contact your hostel manager.",
       403,
     );
   }
+};
+
+export const getResidentPlanContext = async (residentUserId) => {
+  const manager = await getManagerForResident(residentUserId);
+  if (!manager) {
+    return {
+      managerPlan: "free",
+      planFeatures: getPlanFeaturesForClient("free"),
+    };
+  }
+
+  const managerPlan = getEffectivePlanId(manager);
+  return {
+    managerPlan,
+    planFeatures: getPlanFeaturesForClient(managerPlan),
+  };
 };

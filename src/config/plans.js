@@ -1,5 +1,7 @@
 export const PLAN_IDS = ["free", "standard", "premium"];
 
+export const UNLIMITED_TENANTS = null;
+
 export const normalizePlanId = (plan) =>
   plan === "basic" ? "standard" : plan || "free";
 
@@ -9,11 +11,13 @@ export const PLAN_FEATURES = {
   tenant_management: "tenant_management",
   room_management: "room_management",
   rent_tracking: "rent_tracking",
-  attendance: "attendance",
   reports: "reports",
   notifications: "notifications",
   expense_tracking: "expense_tracking",
-  tenant_mobile_app: "tenant_mobile_app",
+  complaints: "complaints",
+  payment_proof: "payment_proof",
+  support: "support",
+  rent_reminders: "rent_reminders",
   data_export: "data_export",
   multi_hostel: "multi_hostel",
   advanced_reports: "advanced_reports",
@@ -28,17 +32,19 @@ export const PLANS = {
     limits: {
       maxHostels: 1,
       maxRooms: 10,
-      maxTenants: 30,
+      maxTenants: UNLIMITED_TENANTS,
     },
     features: {
       tenant_management: true,
       room_management: true,
       rent_tracking: true,
-      attendance: true,
       reports: false,
       notifications: false,
       expense_tracking: false,
-      tenant_mobile_app: false,
+      complaints: false,
+      payment_proof: false,
+      support: false,
+      rent_reminders: false,
       data_export: false,
       multi_hostel: false,
       advanced_reports: false,
@@ -47,22 +53,24 @@ export const PLANS = {
   },
   standard: {
     id: "standard",
-    name: "Starter",
+    name: "Standard",
     price: 1999,
     limits: {
       maxHostels: 1,
       maxRooms: 25,
-      maxTenants: 75,
+      maxTenants: UNLIMITED_TENANTS,
     },
     features: {
       tenant_management: true,
       room_management: true,
       rent_tracking: true,
-      attendance: true,
       reports: true,
       notifications: true,
       expense_tracking: true,
-      tenant_mobile_app: true,
+      complaints: true,
+      payment_proof: true,
+      support: true,
+      rent_reminders: true,
       data_export: true,
       multi_hostel: false,
       advanced_reports: false,
@@ -76,17 +84,19 @@ export const PLANS = {
     limits: {
       maxHostels: 5,
       maxRooms: 75,
-      maxTenants: 250,
+      maxTenants: UNLIMITED_TENANTS,
     },
     features: {
       tenant_management: true,
       room_management: true,
       rent_tracking: true,
-      attendance: true,
       reports: true,
       notifications: true,
       expense_tracking: true,
-      tenant_mobile_app: true,
+      complaints: true,
+      payment_proof: true,
+      support: true,
+      rent_reminders: true,
       data_export: true,
       multi_hostel: true,
       advanced_reports: true,
@@ -96,7 +106,7 @@ export const PLANS = {
 };
 
 const UPGRADE_LABELS = {
-  free: "Starter",
+  free: "Standard",
   standard: "Pro",
   premium: "Pro",
 };
@@ -108,58 +118,47 @@ export const getPlanConfig = (planId) => {
 
 export const getUpgradePlanLabel = (planId) => {
   const normalized = normalizePlanId(planId);
-  return UPGRADE_LABELS[normalized] ?? "Starter";
+  return UPGRADE_LABELS[normalized] ?? "Standard";
 };
 
 export const buildPlanFeatureLabels = (planId) => {
   const plan = getPlanConfig(planId);
   const { limits } = plan;
 
-  const labels = [
-    `Up to ${limits.maxHostels} hostel${limits.maxHostels === 1 ? "" : "s"}`,
-    `Up to ${limits.maxRooms} rooms`,
-    `Up to ${limits.maxTenants} tenants`,
-    "Tenant management",
-    "Room management",
-    "Rent tracking",
-    "Attendance",
-  ];
-
-  if (plan.features.reports) labels.push("Reports");
-  if (plan.features.notifications) labels.push("Notifications");
-  if (plan.features.expense_tracking) labels.push("Expense tracking");
-  if (plan.features.tenant_mobile_app) labels.push("Tenant mobile app");
-  if (plan.features.data_export) labels.push("Data export");
-  if (plan.features.multi_hostel) labels.push("Multi-hostel management");
-  if (plan.features.advanced_reports) labels.push("Advanced reports");
-  if (plan.features.priority_support) labels.push("Priority support");
-
   if (plan.id === "free") {
-    return labels;
+    return [
+      `Up to ${limits.maxHostels} hostel`,
+      `Up to ${limits.maxRooms} rooms`,
+      "Unlimited tenants",
+      "Tenant management",
+      "Manual payment marking",
+      "Basic hostel management",
+    ];
   }
 
   if (plan.id === "standard") {
     return [
       "Everything in Free",
-      "Up to 25 rooms",
-      "Up to 75 tenants",
-      "Reports",
-      "Notifications",
+      `Up to ${limits.maxRooms} rooms`,
+      "Push notifications",
       "Expense tracking",
-      "Tenant mobile app",
-      "Data export",
+      "Reports & analytics",
+      "Complaint system",
+      "Payment proof upload",
+      "Automatic rent reminders",
+      "Alert messages",
+      "Support",
     ];
   }
 
   return [
-    "Everything in Starter",
-    "Up to 5 hostels",
-    "Up to 75 rooms",
-    "Up to 250 tenants",
-    "Multi-hostel management",
-    "Advanced reports",
+    "Everything in Standard",
+    `Up to ${limits.maxHostels} hostels`,
+    `Up to ${limits.maxRooms} rooms`,
     "Priority support",
-    "Future premium features",
+    "All reports",
+    "Full analytics",
+    "All premium features",
   ];
 };
 
