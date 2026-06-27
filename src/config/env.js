@@ -10,6 +10,10 @@ const validateEnv = ({ exitOnError = true } = {}) => {
     missing.push("MONGO_URI or MONGODB_URI");
   }
 
+  if (process.env.NODE_ENV === "production" && !process.env.CRON_SECRET) {
+    missing.push("CRON_SECRET");
+  }
+
   if (missing.length) {
     const message = `Missing required environment variables: ${missing.join(", ")}`;
 
@@ -19,6 +23,15 @@ const validateEnv = ({ exitOnError = true } = {}) => {
     }
 
     throw new Error(message);
+  }
+
+  if (
+    process.env.NODE_ENV === "production" &&
+    !process.env.MANAGER_REGISTRATION_SECRET
+  ) {
+    console.warn(
+      "WARNING: MANAGER_REGISTRATION_SECRET is not set — anyone can register as a manager.",
+    );
   }
 };
 

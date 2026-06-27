@@ -123,6 +123,10 @@ export const refresh = asyncHandler(async (req, res) => {
     throw new AppError("Invalid or expired refresh token", 401);
   }
 
+  if (stored.user.status === "blocked") {
+    throw new AppError("Your account has been blocked. Contact support.", 403);
+  }
+
   await revokeRefreshToken(refreshToken);
   const tokens = await generateAuthTokens(stored.user);
 

@@ -10,7 +10,8 @@ import {
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
 import { validateObjectId } from "../middleware/validateObjectId.js";
-import { validateImageDataUrl } from "../utils/validationHelpers.js";
+import { LIMITS } from "../config/limits.js";
+import { nameValidator } from "../utils/fieldValidators.js";
 
 const router = Router();
 
@@ -55,7 +56,7 @@ router.post(
   authorize("manager"),
   [
     body("hostelId").notEmpty().withMessage("hostelId is required"),
-    body("name").trim().notEmpty().withMessage("Name is required"),
+    nameValidator("name"),
     phoneValidator("phone", true),
     body("cnic")
       .trim()
@@ -84,7 +85,7 @@ router.put(
   authorize("manager"),
   validateObjectId("id"),
   [
-    body("name").optional().trim().notEmpty().withMessage("Name cannot be empty"),
+    nameValidator("name", { required: false }),
     phoneValidator("phone"),
     body("cnic")
       .optional()

@@ -10,6 +10,12 @@ import {
 import { protect } from "../middleware/authMiddleware.js";
 import { authLimiter } from "../middleware/rateLimiter.js";
 import validate from "../middleware/validate.js";
+import { LIMITS } from "../config/limits.js";
+import {
+  loginPasswordValidator,
+  nameValidator,
+  passwordValidator,
+} from "../utils/fieldValidators.js";
 
 const router = Router();
 
@@ -17,7 +23,7 @@ router.post(
   "/register",
   authLimiter,
   [
-    body("name").trim().notEmpty().withMessage("Name is required"),
+    nameValidator("name"),
     body("phone")
       .trim()
       .notEmpty()
@@ -30,9 +36,7 @@ router.post(
       .withMessage("Role is required")
       .isIn(["manager", "resident"])
       .withMessage("Role must be manager or resident"),
-    body("password")
-      .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters"),
+    passwordValidator("password"),
     body("confirmPassword")
       .notEmpty()
       .withMessage("Confirm password is required")
@@ -55,13 +59,15 @@ router.post(
       .optional()
       .trim()
       .matches(/^[a-zA-Z0-9]{4,20}$/)
-      .withMessage("Valid userId is required (4-20 alphanumeric characters)"),
+      .withMessage(
+        `Valid userId is required (${LIMITS.USER_ID_MIN}-${LIMITS.USER_ID_MAX} alphanumeric characters)`,
+      ),
     body("phone")
       .optional()
       .trim()
       .isMobilePhone("any")
       .withMessage("Valid phone is required"),
-    body("password").notEmpty().withMessage("Password is required"),
+    loginPasswordValidator(),
     body().custom((_value, { req }) => {
       if (!req.body.phone && !req.body.userId) {
         throw new Error("userId or phone is required");

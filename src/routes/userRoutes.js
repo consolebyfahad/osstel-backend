@@ -8,6 +8,8 @@ import {
 import { protect } from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
 import { validateImageDataUrl } from "../utils/validationHelpers.js";
+import { LIMITS } from "../config/limits.js";
+import { nameValidator, passwordValidator } from "../utils/fieldValidators.js";
 
 const router = Router();
 
@@ -17,11 +19,13 @@ router.patch(
   "/me",
   protect,
   [
-    body("name").optional().trim().notEmpty().withMessage("Name cannot be empty"),
+    nameValidator("name", { required: false, max: LIMITS.NAME_MAX }),
     body("phone").optional().trim(),
     body("email")
       .optional({ values: "null" })
       .trim()
+      .isLength({ max: LIMITS.EMAIL_MAX })
+      .withMessage(`Email must be under ${LIMITS.EMAIL_MAX} characters`)
       .custom((value) => {
         if (value === "" || value === null) return true;
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -34,7 +38,8 @@ router.patch(
       .optional({ values: "null" })
       .trim()
       .isString()
-      .withMessage("Address must be a string"),
+      .isLength({ max: LIMITS.ADDRESS_MAX })
+      .withMessage(`Address must be under ${LIMITS.ADDRESS_MAX} characters`),
     body("dateOfBirth")
       .optional({ values: "null" })
       .custom((value) => {
@@ -72,10 +77,10 @@ router.patch(
   [
     body("currentPassword")
       .notEmpty()
-      .withMessage("Current password is required"),
-    body("newPassword")
-      .isLength({ min: 6 })
-      .withMessage("New password must be at least 6 characters"),
+      .withMessage("Current password is required")
+      .isLength({ max: LIMITS.PASSWORD_MAX })
+      .withMessage(`Current password must be under ${LIMITS.PASSWORD_MAX} characters`),
+    passwordValidator("newPassword"),
     body("confirmPassword")
       .notEmpty()
       .withMessage("Confirm password is required")
