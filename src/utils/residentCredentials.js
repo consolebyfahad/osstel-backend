@@ -26,4 +26,4 @@ export const generateUniqueResidentUserId = async () => {
 };
 
 export const buildCredentialShareMessage = ({ name, userId, password }) =>
-  `Welcome to OSSTEL${name ? `, ${name}` : ""}!\n\nYour login credentials:\nUser ID: ${userId}\nPassword: ${password}\n\nUse these to login to the resident app.`;
+  `Welcome to Osstel${name ? `, ${name}` : ""}!\n\nYour login credentials:\nUser ID: ${userId}\nPassword: ${password}\n\nUse these to sign in to the Osstel app.`;
