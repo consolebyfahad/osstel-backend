@@ -7,6 +7,7 @@ import asyncHandler from "../middleware/asyncHandler.js";
 import { buildPagination, getPagination } from "../utils/pagination.js";
 import { requireManagerHostel } from "../utils/hostelHelpers.js";
 import { assertCanAddHostel } from "../utils/subscriptionHelpers.js";
+import { fetchHostelDirectory } from "../utils/hostelDirectoryHelpers.js";
 
 export const createHostel = asyncHandler(async (req, res) => {
   await assertCanAddHostel(req.user);
@@ -50,6 +51,22 @@ export const getMyHostels = asyncHandler(async (req, res) => {
     .lean();
 
   return success(res, "Your hostels fetched successfully", { hostels });
+});
+
+export const discoverHostels = asyncHandler(async (req, res) => {
+  const { page, limit, skip } = getPagination(req.query);
+  const { search } = req.query;
+
+  const result = await fetchHostelDirectory({
+    search,
+    page,
+    limit,
+    skip,
+    excludeBlockedOwners: true,
+    includeOwnerPlan: false,
+  });
+
+  return success(res, "Hostels fetched successfully", result);
 });
 
 export const getHostelById = asyncHandler(async (req, res) => {

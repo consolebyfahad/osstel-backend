@@ -3,6 +3,7 @@ import { body } from "express-validator";
 import {
   createHostel,
   deleteHostel,
+  discoverHostels,
   getHostelById,
   getMyHostels,
   updateHostel,
@@ -20,6 +21,13 @@ import { LIMITS } from "../config/limits.js";
 import { nameValidator, trimmedTextValidator } from "../utils/fieldValidators.js";
 
 const router = Router();
+
+router.get(
+  "/discover",
+  protect,
+  authorize("resident"),
+  discoverHostels,
+);
 
 router.get("/", protect, authorize("manager"), getMyHostels);
 router.get("/me", protect, authorize("manager"), getMyHostels);

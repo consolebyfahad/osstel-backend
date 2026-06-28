@@ -28,6 +28,7 @@ import {
   SUBSCRIPTION_PERIOD_DAYS,
 } from "../utils/subscriptionLifecycleHelpers.js";
 import { getPlanConfig } from "../config/plans.js";
+import { fetchHostelDirectory } from "../utils/hostelDirectoryHelpers.js";
 import { notifyUser } from "../services/pushNotificationService.js";
 import { hasRealPhone } from "../utils/googleUserHelpers.js";
 
@@ -367,59 +368,16 @@ export const getAdminHostels = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPagination(req.query);
   const { search } = req.query;
 
-  const filter = {};
-  if (search) {
-    filter.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { city: { $regex: search, $options: "i" } },
-      { address: { $regex: search, $options: "i" } },
-    ];
-  }
-
-  const [hostels, total] = await Promise.all([
-    Hostel.find(filter)
-      .populate("manager", "name phone status subscriptionPlan")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    Hostel.countDocuments(filter),
-  ]);
-
-  const hostelsWithStats = await Promise.all(
-    hostels.map(async (hostel) => {
-      const [roomsCount, tenantsCount] = await Promise.all([
-        Room.countDocuments({ hostel: hostel._id }),
-        Tenancy.countDocuments({ hostel: hostel._id, status: "active" }),
-      ]);
-
-      return {
-        id: String(hostel._id),
-        name: hostel.name,
-        address: hostel.address,
-        city: hostel.city,
-        contactPhone: hostel.contactPhone,
-        roomsCount,
-        tenantsCount,
-        status: tenantsCount > 0 ? "active" : "vacant",
-        owner: hostel.manager
-          ? {
-              id: String(hostel.manager._id),
-              name: hostel.manager.name,
-              phone: hostel.manager.phone ?? "",
-              status: hostel.manager.status || "active",
-              subscriptionPlan: normalizePlan(hostel.manager.subscriptionPlan),
-            }
-          : null,
-        createdAt: hostel.createdAt,
-      };
-    })
-  );
-
-  return success(res, "Hostels fetched successfully", {
-    hostels: hostelsWithStats,
-    pagination: buildPagination(total, page, limit),
+  const result = await fetchHostelDirectory({
+    search,
+    page,
+    limit,
+    skip,
+    excludeBlockedOwners: false,
+    includeOwnerPlan: true,
   });
+
+  return success(res, "Hostels fetched successfully", result);
 });
 
 export const getAdminHostelById = asyncHandler(async (req, res) => {
