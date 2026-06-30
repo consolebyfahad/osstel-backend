@@ -143,6 +143,14 @@ router.post(
     body("rent")
       .isFloat({ min: 0, max: LIMITS.RENT_MAX })
       .withMessage(`Rent must be between 0 and ${LIMITS.RENT_MAX}`),
+    body("separateMeterBilling")
+      .optional()
+      .isBoolean()
+      .withMessage("separateMeterBilling must be true or false"),
+    body("freeUnits")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("freeUnits must be a non-negative number"),
   ],
   validate,
   createRoom
@@ -184,6 +192,14 @@ router.patch(
       .optional()
       .isIn(["available", "occupied", "maintenance"])
       .withMessage("Invalid room status"),
+    body("separateMeterBilling")
+      .optional()
+      .isBoolean()
+      .withMessage("separateMeterBilling must be true or false"),
+    body("freeUnits")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("freeUnits must be a non-negative number"),
   ],
   validate,
   updateRoom

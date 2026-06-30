@@ -14,6 +14,7 @@ import {
   formatMeterReading,
   formatRoomMeter,
   getActiveTenancyCountInRoom,
+  getRoomBillingSettings,
   getRoomMeterReadingsForPeriod,
 } from "../utils/meterHelpers.js";
 import {
@@ -52,12 +53,23 @@ const requireRoomInHostel = async (hostelId, roomId, managerId) => {
   return { hostel, room };
 };
 
+const requireMeterBillingRoom = (room) => {
+  if (!room.separateMeterBilling) {
+    throw new AppError(
+      "This room uses rent-only billing. Enable separate meter billing in room settings first.",
+      400,
+    );
+  }
+};
+
 export const getRoomMeters = asyncHandler(async (req, res) => {
   const { hostel, room } = await requireRoomInHostel(
     req.params.hostelId,
     req.params.roomId,
     req.user._id,
   );
+
+  requireMeterBillingRoom(room);
 
   const meters = await RoomMeter.find({
     room: room._id,
@@ -76,6 +88,8 @@ export const createRoomMeter = asyncHandler(async (req, res) => {
     req.params.roomId,
     req.user._id,
   );
+
+  requireMeterBillingRoom(room);
 
   const parsedRate = Number(ratePerUnit);
   if (Number.isNaN(parsedRate) || parsedRate < 0) {
@@ -114,6 +128,8 @@ export const updateRoomMeter = asyncHandler(async (req, res) => {
     req.params.roomId,
     req.user._id,
   );
+
+  requireMeterBillingRoom(room);
 
   const meter = await RoomMeter.findOne({
     _id: req.params.meterId,
@@ -155,6 +171,8 @@ export const deleteRoomMeter = asyncHandler(async (req, res) => {
     req.user._id,
   );
 
+  requireMeterBillingRoom(room);
+
   const meter = await RoomMeter.findOne({
     _id: req.params.meterId,
     room: room._id,
@@ -176,6 +194,8 @@ export const getRoomMeterReadings = asyncHandler(async (req, res) => {
     req.params.roomId,
     req.user._id,
   );
+
+  requireMeterBillingRoom(room);
 
   const [meters, readings, residentCount] = await Promise.all([
     RoomMeter.find({ room: room._id, hostel: hostel._id, isActive: true }).sort({
@@ -206,6 +226,8 @@ export const recordRoomMeterReadings = asyncHandler(async (req, res) => {
     req.params.roomId,
     req.user._id,
   );
+
+  requireMeterBillingRoom(room);
 
   if (!Array.isArray(readings) || readings.length === 0) {
     throw new AppError("readings array is required", 400);
@@ -346,12 +368,21 @@ export const getRentBillPreview = asyncHandler(async (req, res) => {
   }
 
   const residentCount = await getActiveTenancyCountInRoom(payment.room._id);
-  const readings = await getRoomMeterReadingsForPeriod(
-    payment.room._id,
-    payment.month,
-    payment.year,
-  );
-  const meterCharges = buildMeterChargesForResident(readings, residentCount);
+  const billing = await getRoomBillingSettings(payment.room._id);
+  const readings = billing.separateMeterBilling
+    ? await getRoomMeterReadingsForPeriod(
+        payment.room._id,
+        payment.month,
+        payment.year,
+      )
+    : [];
+  const meterCharges = billing.separateMeterBilling
+    ? buildMeterChargesForResident(
+        readings,
+        residentCount,
+        billing.freeUnits,
+      )
+    : [];
   const baseAmount = tenancy
     ? getTenancyMonthlyRent(tenancy)
     : payment.baseAmount ?? payment.amount;
@@ -367,6 +398,8 @@ export const getRentBillPreview = asyncHandler(async (req, res) => {
     billFinalizedAt: payment.billFinalizedAt,
     residentCount,
     readings,
+    separateMeterBilling: billing.separateMeterBilling,
+    freeUnits: billing.freeUnits,
   });
 });
 
@@ -408,12 +441,21 @@ export const finalizeRentBill = asyncHandler(async (req, res) => {
   }
 
   const residentCount = await getActiveTenancyCountInRoom(payment.room._id);
-  const readings = await getRoomMeterReadingsForPeriod(
-    payment.room._id,
-    payment.month,
-    payment.year,
-  );
-  const meterCharges = buildMeterChargesForResident(readings, residentCount);
+  const billing = await getRoomBillingSettings(payment.room._id);
+  const readings = billing.separateMeterBilling
+    ? await getRoomMeterReadingsForPeriod(
+        payment.room._id,
+        payment.month,
+        payment.year,
+      )
+    : [];
+  const meterCharges = billing.separateMeterBilling
+    ? buildMeterChargesForResident(
+        readings,
+        residentCount,
+        billing.freeUnits,
+      )
+    : [];
   const baseAmount = getTenancyMonthlyRent(tenancy);
 
   const parsedExtras = (extraCharges ?? []).map((charge) => {

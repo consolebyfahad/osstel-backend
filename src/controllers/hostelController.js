@@ -82,13 +82,20 @@ export const getHostelById = asyncHandler(async (req, res) => {
   const hostel = await Hostel.findOne({
     _id: req.params.hostelId,
     manager: req.user._id,
-  }).lean();
+  });
 
   if (!hostel) {
     throw new AppError("Hostel not found", 404);
   }
 
-  return success(res, "Hostel fetched successfully", { hostel });
+  const hostelCode = await ensureHostelCode(hostel);
+
+  return success(res, "Hostel fetched successfully", {
+    hostel: {
+      ...hostel.toObject(),
+      hostelCode,
+    },
+  });
 });
 
 export const updateHostel = asyncHandler(async (req, res) => {

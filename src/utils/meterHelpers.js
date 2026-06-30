@@ -1,3 +1,4 @@
+import Room from "../models/Room.js";
 import RoomMeter from "../models/RoomMeter.js";
 import MeterReading from "../models/MeterReading.js";
 import Tenancy from "../models/Tenancy.js";
@@ -34,6 +35,42 @@ export const getActiveTenancyCountInRoom = async (roomId) => {
   return Tenancy.countDocuments({ room: roomId, status: "active" });
 };
 
+export const assertRoomMeterBillingEnabled = (room) => {
+  if (!room?.separateMeterBilling) {
+    throw new Error("ROOM_METER_BILLING_DISABLED");
+  }
+};
+
+export const ensureDefaultRoomMeter = async (roomId, hostelId) => {
+  const count = await RoomMeter.countDocuments({
+    room: roomId,
+    hostel: hostelId,
+    isActive: true,
+  });
+
+  if (count > 0) return null;
+
+  return RoomMeter.create({
+    room: roomId,
+    hostel: hostelId,
+    name: "Electricity",
+    unitLabel: "kWh",
+    ratePerUnit: 0,
+    lastReading: 0,
+  });
+};
+
+export const getRoomBillingSettings = async (roomId) => {
+  const room = await Room.findById(roomId)
+    .select("separateMeterBilling freeUnits")
+    .lean();
+
+  return {
+    separateMeterBilling: room?.separateMeterBilling === true,
+    freeUnits: room?.freeUnits ?? 0,
+  };
+};
+
 export const getRoomMeterReadingsForPeriod = async (roomId, month, year) => {
   const readings = await MeterReading.find({ room: roomId, month, year })
     .populate("meter")
@@ -44,27 +81,42 @@ export const getRoomMeterReadingsForPeriod = async (roomId, month, year) => {
   );
 };
 
-export const buildMeterChargesForResident = (readings, residentCount) => {
+export const buildMeterChargesForResident = (
+  readings,
+  residentCount,
+  freeUnits = 0,
+) => {
   if (!readings.length || residentCount < 1) return [];
 
+  const parsedFreeUnits = Math.max(0, Number(freeUnits) || 0);
+
   return readings.map((reading) => {
+    const rawUnits = reading.unitsConsumed ?? 0;
+    const billableRoomUnits = Math.max(0, rawUnits - parsedFreeUnits);
+    const totalBillableAmount =
+      Math.round(billableRoomUnits * (reading.ratePerUnit ?? 0) * 100) / 100;
     const shareAmount =
-      Math.round((reading.totalAmount / residentCount) * 100) / 100;
+      Math.round((totalBillableAmount / residentCount) * 100) / 100;
     const shareUnits =
-      Math.round((reading.unitsConsumed / residentCount) * 100) / 100;
+      Math.round((billableRoomUnits / residentCount) * 100) / 100;
+
+    const freeUnitsNote =
+      parsedFreeUnits > 0 && rawUnits > 0
+        ? ` (${parsedFreeUnits} ${reading.unitLabel} free)`
+        : "";
 
     return {
       type: "meter",
       label:
         residentCount > 1
-          ? `${reading.meterName ?? "Utility"} (${shareUnits} ${reading.unitLabel} share)`
-          : `${reading.meterName ?? "Utility"} (${reading.unitsConsumed} ${reading.unitLabel})`,
-      units: residentCount > 1 ? shareUnits : reading.unitsConsumed,
+          ? `${reading.meterName ?? "Utility"} (${shareUnits} ${reading.unitLabel} share)${freeUnitsNote}`
+          : `${reading.meterName ?? "Utility"} (${billableRoomUnits} ${reading.unitLabel})${freeUnitsNote}`,
+      units: residentCount > 1 ? shareUnits : billableRoomUnits,
       rate: reading.ratePerUnit,
       amount: shareAmount,
       meterReadingId: reading.id,
     };
-  });
+  }).filter((charge) => charge.amount > 0);
 };
 
 export const computePaymentTotal = (baseAmount, charges = []) => {
@@ -118,11 +170,18 @@ export const finalizeRoomBillsForPeriod = async ({
     return { finalized: [], skipped: [] };
   }
 
-  const readings = await getRoomMeterReadingsForPeriod(roomId, month, year);
-  const meterCharges = buildMeterChargesForResident(
-    readings,
-    tenancies.length,
-  );
+  const room = await Room.findById(roomId).select("separateMeterBilling freeUnits").lean();
+
+  const readings = room?.separateMeterBilling
+    ? await getRoomMeterReadingsForPeriod(roomId, month, year)
+    : [];
+  const meterCharges = room?.separateMeterBilling
+    ? buildMeterChargesForResident(
+        readings,
+        tenancies.length,
+        room.freeUnits ?? 0,
+      )
+    : [];
 
   const finalized = [];
   const skipped = [];

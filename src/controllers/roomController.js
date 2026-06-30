@@ -6,10 +6,29 @@ import asyncHandler from "../middleware/asyncHandler.js";
 import { requireManagerHostel } from "../utils/hostelHelpers.js";
 import { getActiveTenancyCount, syncRoomStatus } from "../utils/residentHelpers.js";
 import { assertCanAddRoom } from "../utils/subscriptionHelpers.js";
+import { ensureDefaultRoomMeter } from "../utils/meterHelpers.js";
+
+const parseMeterBillingFields = (body) => {
+  const separateMeterBilling = Boolean(body.separateMeterBilling);
+  const freeUnitsRaw =
+    body.freeUnits !== undefined && body.freeUnits !== null && body.freeUnits !== ""
+      ? Number(body.freeUnits)
+      : 0;
+
+  if (Number.isNaN(freeUnitsRaw) || freeUnitsRaw < 0) {
+    throw new AppError("freeUnits must be a non-negative number", 400);
+  }
+
+  return {
+    separateMeterBilling,
+    freeUnits: separateMeterBilling ? freeUnitsRaw : 0,
+  };
+};
 
 export const createRoom = asyncHandler(async (req, res) => {
   const { hostelId } = req.params;
   const { roomNumber, capacity, rent } = req.body;
+  const billing = parseMeterBillingFields(req.body);
 
   const hostel = await requireManagerHostel(hostelId, req.user._id);
   await assertCanAddRoom(req.user);
@@ -20,7 +39,12 @@ export const createRoom = asyncHandler(async (req, res) => {
       roomNumber,
       capacity,
       rent,
+      ...billing,
     });
+
+    if (billing.separateMeterBilling) {
+      await ensureDefaultRoomMeter(room._id, hostel._id);
+    }
 
     return success(res, "Room created successfully", { room }, 201);
   } catch (error) {
@@ -60,7 +84,7 @@ export const updateRoom = asyncHandler(async (req, res) => {
     if (capacity < activeCount) {
       throw new AppError(
         `Capacity cannot be less than active residents (${activeCount})`,
-        400
+        400,
       );
     }
     room.capacity = capacity;
@@ -69,6 +93,23 @@ export const updateRoom = asyncHandler(async (req, res) => {
   if (roomNumber) room.roomNumber = roomNumber;
   if (rent !== undefined) room.rent = rent;
   if (status) room.status = status;
+
+  if (req.body.separateMeterBilling !== undefined || req.body.freeUnits !== undefined) {
+    const billing = parseMeterBillingFields({
+      separateMeterBilling:
+        req.body.separateMeterBilling !== undefined
+          ? req.body.separateMeterBilling
+          : room.separateMeterBilling,
+      freeUnits:
+        req.body.freeUnits !== undefined ? req.body.freeUnits : room.freeUnits,
+    });
+    room.separateMeterBilling = billing.separateMeterBilling;
+    room.freeUnits = billing.freeUnits;
+
+    if (billing.separateMeterBilling) {
+      await ensureDefaultRoomMeter(room._id, room.hostel);
+    }
+  }
 
   try {
     await room.save();
@@ -101,7 +142,7 @@ export const deleteRoom = asyncHandler(async (req, res) => {
   if (activeResidents > 0) {
     throw new AppError(
       "Cannot delete room with active residents. Remove residents first.",
-      400
+      400,
     );
   }
 
