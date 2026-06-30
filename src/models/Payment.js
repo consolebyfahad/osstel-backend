@@ -82,12 +82,10 @@ paymentSchema.index(
   { unique: true, sparse: true },
 );
 
-paymentSchema.pre("validate", function validatePaymentResidentOrTenancy(next) {
+paymentSchema.pre("validate", function validatePaymentResidentOrTenancy() {
   if (!this.resident && !this.tenancy) {
-    next(new Error("Payment requires either resident or tenancy"));
-    return;
+    throw new Error("Payment requires either resident or tenancy");
   }
-  next();
 });
 
 export default mongoose.model("Payment", paymentSchema);
