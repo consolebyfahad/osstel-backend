@@ -44,3 +44,27 @@ export const authorize =
 
     next();
   };
+
+export const optionalProtect = async (req, _res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith("Bearer ")) {
+    return next();
+  }
+
+  try {
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select("-password");
+
+    if (user && user.status !== "blocked") {
+      await clearExpiredTrialIfNeeded(user);
+      await clearExpiredSubscriptionIfNeeded(user);
+      req.user = user;
+    }
+  } catch {
+    // Ignore invalid tokens for public browse routes.
+  }
+
+  next();
+};

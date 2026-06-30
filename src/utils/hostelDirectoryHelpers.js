@@ -3,22 +3,23 @@ import Room from "../models/Room.js";
 import Tenancy from "../models/Tenancy.js";
 import User from "../models/User.js";
 import { buildPagination } from "./pagination.js";
+import { buildCaseInsensitiveRegex } from "./regexHelpers.js";
 
 const normalizePlan = (plan) => (plan === "basic" ? "standard" : plan);
 
 function buildSearchFilter(search) {
   if (!search?.trim()) return {};
-  const term = search.trim();
+  const pattern = buildCaseInsensitiveRegex(search);
   return {
     $or: [
-      { name: { $regex: term, $options: "i" } },
-      { city: { $regex: term, $options: "i" } },
-      { address: { $regex: term, $options: "i" } },
+      { name: pattern },
+      { city: pattern },
+      { address: pattern },
     ],
   };
 }
 
-async function attachHostelDirectoryStats(hostels, { includeOwnerPlan = false } = {}) {
+async function attachHostelDirectoryStats(hostels, { includeOwnerPlan = false, includeContacts = true } = {}) {
   return Promise.all(
     hostels.map(async (hostel) => {
       const [rooms, activeTenancies] = await Promise.all([
@@ -39,7 +40,7 @@ async function attachHostelDirectoryStats(hostels, { includeOwnerPlan = false } 
         ? {
             ...(includeOwnerPlan ? { id: String(hostel.manager._id) } : {}),
             name: hostel.manager.name,
-            phone: hostel.manager.phone ?? "",
+            ...(includeContacts ? { phone: hostel.manager.phone ?? "" } : {}),
             ...(includeOwnerPlan
               ? {
                   status: hostel.manager.status || "active",
@@ -56,7 +57,8 @@ async function attachHostelDirectoryStats(hostels, { includeOwnerPlan = false } 
         name: hostel.name,
         address: hostel.address,
         city: hostel.city,
-        contactPhone: hostel.contactPhone,
+        image: hostel.image || null,
+        ...(includeContacts ? { contactPhone: hostel.contactPhone } : {}),
         roomsCount,
         tenantsCount,
         vacantBeds,
@@ -97,6 +99,7 @@ export async function fetchHostelDirectory({
   skip,
   excludeBlockedOwners = true,
   includeOwnerPlan = false,
+  includeContacts = true,
 }) {
   const filter = await buildDirectoryFilter(search, excludeBlockedOwners);
 
@@ -117,6 +120,7 @@ export async function fetchHostelDirectory({
 
   const hostelsWithStats = await attachHostelDirectoryStats(hostelsRaw, {
     includeOwnerPlan,
+    includeContacts,
   });
 
   return {

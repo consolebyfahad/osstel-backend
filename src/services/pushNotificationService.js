@@ -91,9 +91,12 @@ const sendFcmMessages = async (messages) => {
   }
 };
 
-const buildPayload = ({ title, body, data = {} }) => {
+const buildPayload = ({ title, body, type, data = {} }) => {
   const stringData = Object.fromEntries(
-    Object.entries(data).map(([key, value]) => [key, String(value ?? "")]),
+    Object.entries({ ...data, ...(type ? { type } : {}) }).map(([key, value]) => [
+      key,
+      String(value ?? ""),
+    ]),
   );
 
   return { title, body, data: stringData };

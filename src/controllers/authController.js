@@ -17,6 +17,7 @@ import {
   hasRealPhone,
   isLegacyGooglePhone,
 } from "../utils/googleUserHelpers.js";
+import { generateUniqueResidentUserId } from "../utils/residentCredentials.js";
 
 const formatUser = (user) => ({
   id: user._id,
@@ -26,6 +27,10 @@ const formatUser = (user) => ({
   email: user.email || null,
   role: user.role,
   status: user.status || "active",
+  hostelConnectionStatus:
+    user.role === "resident"
+      ? user.hostelConnectionStatus || "not_connected"
+      : undefined,
   authProvider: user.authProvider || "local",
   googleId: user.googleId || null,
   ...formatSubscriptionForClient(user),
@@ -59,11 +64,17 @@ export const register = asyncHandler(async (req, res) => {
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
+  const residentUserId =
+    role === "resident" ? await generateUniqueResidentUserId() : undefined;
+
   const user = await User.create({
     name,
     phone,
     role,
     password: hashedPassword,
+    ...(role === "resident"
+      ? { hostelConnectionStatus: "not_connected", userId: residentUserId }
+      : {}),
   });
 
   const tokens = await generateAuthTokens(user);
@@ -138,7 +149,7 @@ export const logout = asyncHandler(async (req, res) => {
 
   if (refreshToken) {
     await revokeRefreshToken(refreshToken);
-  } else {
+  } else if (req.user?._id) {
     await revokeAllUserTokens(req.user._id);
   }
 

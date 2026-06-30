@@ -12,6 +12,10 @@ import {
   submitRentForReview,
   updateRentStatus,
 } from "../controllers/rentController.js";
+import {
+  finalizeRentBill,
+  getRentBillPreview,
+} from "../controllers/meterController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
 import { validateObjectId } from "../middleware/validateObjectId.js";
@@ -39,6 +43,38 @@ const statusValidator = [
 router.get("/", protect, authorize("manager"), getRentCollection);
 router.get("/me", protect, authorize("resident"), getMyRent);
 router.get("/me/history", protect, authorize("resident"), getMyRentHistory);
+
+router.get(
+  "/:id/bill-preview",
+  protect,
+  authorize("manager"),
+  validateObjectId("id"),
+  getRentBillPreview,
+);
+
+router.post(
+  "/:id/finalize-bill",
+  protect,
+  authorize("manager"),
+  validateObjectId("id"),
+  [
+    body("extraCharges")
+      .optional()
+      .isArray()
+      .withMessage("extraCharges must be an array"),
+    body("extraCharges.*.label")
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage("extra charge label is required"),
+    body("extraCharges.*.amount")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("extra charge amount must be non-negative"),
+  ],
+  validate,
+  finalizeRentBill,
+);
 
 router.post(
   "/:id/payment",

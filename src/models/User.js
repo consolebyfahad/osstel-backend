@@ -36,6 +36,11 @@ const userSchema = new mongoose.Schema(
       enum: ["active", "blocked"],
       default: "active",
     },
+    hostelConnectionStatus: {
+      type: String,
+      enum: ["not_connected", "pending", "active"],
+      default: "not_connected",
+    },
     subscriptionPlan: {
       type: String,
       enum: ["free", "standard", "premium"],

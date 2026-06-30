@@ -1,24 +1,29 @@
 import Tenancy from "../models/Tenancy.js";
 import User from "../models/User.js";
+import JoinRequest from "../models/JoinRequest.js";
 import AppError from "../utils/AppError.js";
 import { success } from "../utils/apiResponse.js";
 import asyncHandler from "../middleware/asyncHandler.js";
 import { buildPagination, getPagination } from "../utils/pagination.js";
 import {
-  findOrCreateResident,
+  applyTenancyProfileFields,
+  createHostelResidentRecord,
   findRoomInHostel,
   formatResident,
+  formatResidentLookup,
   getActiveTenancyCount,
   getManagerHostel,
+  linkResidentToTenancy,
   syncRoomStatus,
 } from "../utils/residentHelpers.js";
 import { RESIDENT_PROFILE_FIELDS } from "../utils/validationHelpers.js";
 import Payment from "../models/Payment.js";
-import { getTenancyMonthlyRent, ensureResidentRentRecord, seedRentForNewTenancy } from "../utils/rentHelpers.js";
+import { getTenancyMonthlyRent, ensureResidentRentRecord, ensurePaymentForTenancy, seedRentForNewTenancy } from "../utils/rentHelpers.js";
 import {
   buildRentReminderBody,
   notifyRentReminder,
 } from "../utils/rentNotificationHelpers.js";
+import { notifyUser } from "../services/pushNotificationService.js";
 import {
   assertCanAddTenant,
   assertHasFeature,
@@ -55,12 +60,35 @@ const resolveSecurityDeposit = (securityDeposit) => {
   return parsed;
 };
 
+export const lookupResidentByUserId = asyncHandler(async (req, res) => {
+  const userId = req.params.userId?.trim();
+
+  if (!userId) {
+    throw new AppError("Resident user ID is required", 400);
+  }
+
+  const user = await User.findOne({ userId, role: "resident" }).select(
+    RESIDENT_PROFILE_FIELDS,
+  );
+
+  if (!user) {
+    throw new AppError("No resident account found with this User ID", 404);
+  }
+
+  return success(res, "Resident profile fetched successfully", {
+    resident: await formatResidentLookup(user),
+  });
+});
+
 export const addResident = asyncHandler(async (req, res) => {
   const {
     hostelId,
     name,
     phone,
     cnic,
+    address,
+    email,
+    dateOfBirth,
     roomNumber,
     monthlyRent,
     securityDeposit,
@@ -70,6 +98,8 @@ export const addResident = asyncHandler(async (req, res) => {
     emergencyNumber,
     fatherName,
     fatherPhone,
+    checkInDate,
+    residentUserId,
   } = req.body;
 
   const hostel = await getManagerHostel(hostelId, req.user._id);
@@ -85,73 +115,119 @@ export const addResident = asyncHandler(async (req, res) => {
     throw new AppError("Room is already full", 400);
   }
 
-  let resident;
-  let loginCredentials = null;
+  let tenancy;
   try {
-    ({ resident, loginCredentials } = await findOrCreateResident({
+    tenancy = await createHostelResidentRecord({
+      hostelId: hostel._id,
+      roomId: room._id,
       name,
       phone,
       cnic,
+      address,
+      email,
+      dateOfBirth,
       profileImage,
       cnicFront,
       cnicBack,
       emergencyNumber,
       fatherName,
       fatherPhone,
-    }));
+      monthlyRent: resolveTenancyMonthlyRent(monthlyRent, room.rent),
+      securityDeposit: resolveSecurityDeposit(securityDeposit),
+      checkInDate,
+      residentUserId,
+    });
   } catch (error) {
     if (error.message === "PHONE_IN_USE") {
       throw new AppError("This phone number belongs to a non-resident account", 400);
     }
-    if (error.message === "USER_ID_GENERATION_FAILED") {
-      throw new AppError("Could not generate resident user ID. Please try again.", 500);
+    if (error.message === "RESIDENT_ALREADY_IN_HOSTEL") {
+      throw new AppError("This phone number is already registered in this hostel", 400);
     }
-    if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern || {})[0];
-      if (field === "phone") {
-        throw new AppError("This phone number is already registered", 400);
-      }
+    if (error.message === "RESIDENT_USER_NOT_FOUND") {
+      throw new AppError("No resident account found with this User ID", 404);
+    }
+    if (error.message === "PHONE_MISMATCH") {
+      throw new AppError(
+        "Phone number does not match the resident account for this User ID",
+        400,
+      );
+    }
+    if (error.message === "RESIDENT_ALREADY_CONNECTED") {
+      throw new AppError(
+        "This resident is already connected to another hostel",
+        400,
+      );
     }
     throw error;
   }
 
-  const existingTenancy = await Tenancy.findOne({
-    resident: resident._id,
-    hostel: hostel._id,
-    status: "active",
-  });
+  let linked = false;
+  if (residentUserId) {
+    const resident = await User.findOne({
+      userId: residentUserId.trim(),
+      role: "resident",
+    });
 
-  if (existingTenancy) {
-    throw new AppError("Resident already has an active room in this hostel", 400);
+    if (!resident) {
+      throw new AppError("No resident account found with this User ID", 404);
+    }
+
+    await linkResidentToTenancy(resident, tenancy);
+    await seedRentForNewTenancy(resident._id, tenancy.checkInDate);
+
+    await JoinRequest.updateMany(
+      { resident: resident._id, status: "pending" },
+      {
+        $set: {
+          status: "rejected",
+          reviewedBy: req.user._id,
+          rejectedAt: new Date(),
+        },
+      },
+    );
+
+    await notifyUser(resident._id, {
+      title: "Added to hostel",
+      body: `You have been added to ${hostel.name}. Your account is now connected.`,
+      type: "resident_linked_by_manager",
+      data: {
+        hostelId: String(hostel._id),
+        tenancyId: String(tenancy._id),
+      },
+    });
+
+    linked = true;
   }
 
-  const tenancy = await Tenancy.create({
-    resident: resident._id,
-    room: room._id,
-    hostel: hostel._id,
-    checkInDate: new Date(),
-    status: "active",
-    monthlyRent: resolveTenancyMonthlyRent(monthlyRent, room.rent),
-    securityDeposit: resolveSecurityDeposit(securityDeposit),
-  });
-
   await syncRoomStatus(room._id);
-  await seedRentForNewTenancy(resident._id, tenancy.checkInDate);
+
+  if (!linked) {
+    await tenancy.populate("room");
+    const checkIn = tenancy.checkInDate ?? new Date();
+    await ensurePaymentForTenancy(
+      tenancy,
+      checkIn.getMonth() + 1,
+      checkIn.getFullYear(),
+    );
+  }
 
   const populated = await Tenancy.findById(tenancy._id)
     .populate("resident", RESIDENT_PROFILE_FIELDS)
     .populate("room", "roomNumber rent");
 
+  const message = linked
+    ? "Resident added and linked to their Osstel account successfully."
+    : "Resident added successfully. They can sign up in the app and join using the hostel code.";
+
   return success(
     res,
-    loginCredentials
-      ? "Resident added successfully. Share login credentials with the tenant."
-      : "Resident added successfully",
+    message,
     {
       resident: formatResident(populated),
-      ...(loginCredentials ? { loginCredentials } : {}),
+      linked,
     },
-    201
+    201,
   );
 });
 
@@ -205,6 +281,9 @@ export const updateResident = asyncHandler(async (req, res) => {
     emergencyNumber,
     fatherName,
     fatherPhone,
+    address,
+    email,
+    dateOfBirth,
   } = req.body;
 
   const tenancy = await Tenancy.findById(req.params.id)
@@ -218,43 +297,87 @@ export const updateResident = asyncHandler(async (req, res) => {
   const hostel = await getManagerHostel(tenancy.hostel, req.user._id);
   if (!hostel) throw new AppError("Not authorized for this hostel", 403);
 
-  if (name) tenancy.resident.name = name;
-  if (cnic !== undefined) tenancy.resident.cnic = cnic;
+  const isLinked = Boolean(tenancy.resident);
 
-  if (profileImage !== undefined) {
-    tenancy.resident.profileImage =
-      profileImage === "" || profileImage === null ? null : profileImage;
-  }
-  if (cnicFront !== undefined) {
-    tenancy.resident.cnicFront =
-      cnicFront === "" || cnicFront === null ? null : cnicFront;
-  }
-  if (cnicBack !== undefined) {
-    tenancy.resident.cnicBack =
-      cnicBack === "" || cnicBack === null ? null : cnicBack;
-  }
-  if (emergencyNumber !== undefined) {
-    tenancy.resident.emergencyNumber =
-      emergencyNumber === "" || emergencyNumber === null ? null : emergencyNumber;
-  }
-  if (fatherName !== undefined) {
-    tenancy.resident.fatherName =
-      fatherName === "" || fatherName === null ? null : fatherName;
-  }
-  if (fatherPhone !== undefined) {
-    tenancy.resident.fatherPhone =
-      fatherPhone === "" || fatherPhone === null ? null : fatherPhone;
-  }
+  if (isLinked) {
+    if (name) tenancy.resident.name = name;
+    if (cnic !== undefined) tenancy.resident.cnic = cnic;
 
-  if (phone && phone !== tenancy.resident.phone) {
-    const existingUser = await User.findOne({ phone });
-    if (
-      existingUser &&
-      existingUser._id.toString() !== tenancy.resident._id.toString()
-    ) {
-      throw new AppError("Phone number already in use", 400);
+    if (profileImage !== undefined) {
+      tenancy.resident.profileImage =
+        profileImage === "" || profileImage === null ? null : profileImage;
     }
-    tenancy.resident.phone = phone;
+    if (cnicFront !== undefined) {
+      tenancy.resident.cnicFront =
+        cnicFront === "" || cnicFront === null ? null : cnicFront;
+    }
+    if (cnicBack !== undefined) {
+      tenancy.resident.cnicBack =
+        cnicBack === "" || cnicBack === null ? null : cnicBack;
+    }
+    if (emergencyNumber !== undefined) {
+      tenancy.resident.emergencyNumber =
+        emergencyNumber === "" || emergencyNumber === null
+          ? null
+          : emergencyNumber;
+    }
+    if (fatherName !== undefined) {
+      tenancy.resident.fatherName =
+        fatherName === "" || fatherName === null ? null : fatherName;
+    }
+    if (fatherPhone !== undefined) {
+      tenancy.resident.fatherPhone =
+        fatherPhone === "" || fatherPhone === null ? null : fatherPhone;
+    }
+    if (email !== undefined) {
+      tenancy.resident.email = email === "" || email === null ? null : email;
+    }
+    if (dateOfBirth !== undefined) {
+      tenancy.resident.dateOfBirth =
+        dateOfBirth === "" || dateOfBirth === null
+          ? null
+          : new Date(dateOfBirth);
+    }
+    if (address !== undefined) {
+      tenancy.resident.address =
+        address === "" || address === null ? null : address;
+      tenancy.address =
+        address === "" || address === null ? null : address;
+    }
+
+    if (phone && phone !== tenancy.resident.phone) {
+      const existingUser = await User.findOne({ phone });
+      if (
+        existingUser &&
+        existingUser._id.toString() !== tenancy.resident._id.toString()
+      ) {
+        throw new AppError("Phone number already in use", 400);
+      }
+      tenancy.resident.phone = phone;
+      tenancy.phone = phone;
+    }
+  } else {
+    applyTenancyProfileFields(tenancy, {
+      name,
+      phone,
+      cnic,
+      address,
+      email,
+      dateOfBirth,
+      profileImage,
+      cnicFront,
+      cnicBack,
+      emergencyNumber,
+      fatherName,
+      fatherPhone,
+    });
+
+    if (phone && phone !== tenancy.phone) {
+      const existingUser = await User.findOne({ phone });
+      if (existingUser) {
+        throw new AppError("Phone number already in use", 400);
+      }
+    }
   }
 
   if (roomNumber && roomNumber !== tenancy.room.roomNumber) {
@@ -283,17 +406,27 @@ export const updateResident = asyncHandler(async (req, res) => {
       tenancy.room.rent,
     );
 
-    const now = new Date();
-    await Payment.updateMany(
-      {
+    if (isLinked) {
+      const now = new Date();
+      const newBase = getTenancyMonthlyRent(tenancy);
+      const pendingPayments = await Payment.find({
         resident: tenancy.resident._id,
         room: tenancy.room._id,
         month: now.getMonth() + 1,
         year: now.getFullYear(),
         status: { $in: ["pending", "rejected"] },
-      },
-      { $set: { amount: getTenancyMonthlyRent(tenancy) } },
-    );
+      });
+
+      for (const pendingPayment of pendingPayments) {
+        pendingPayment.baseAmount = newBase;
+        const chargesTotal = (pendingPayment.charges ?? []).reduce(
+          (sum, charge) => sum + (charge.amount ?? 0),
+          0,
+        );
+        pendingPayment.amount = Math.round((newBase + chargesTotal) * 100) / 100;
+        await pendingPayment.save();
+      }
+    }
   }
 
   if (securityDeposit !== undefined) {
@@ -301,7 +434,9 @@ export const updateResident = asyncHandler(async (req, res) => {
   }
 
   await tenancy.save();
-  await tenancy.resident.save();
+  if (isLinked) {
+    await tenancy.resident.save();
+  }
 
   const updated = await Tenancy.findById(tenancy._id)
     .populate("resident", RESIDENT_PROFILE_FIELDS)
@@ -317,6 +452,10 @@ export const sendResidentRentAlert = asyncHandler(async (req, res) => {
 
   if (!tenancy || tenancy.status !== "active") {
     throw new AppError("Resident not found", 404);
+  }
+
+  if (!tenancy.resident) {
+    throw new AppError("Resident has not connected their account yet", 400);
   }
 
   const hostel = await getManagerHostel(tenancy.hostel, req.user._id);
@@ -375,6 +514,14 @@ export const removeResident = asyncHandler(async (req, res) => {
   tenancy.checkOutDate = new Date();
   await tenancy.save();
   await syncRoomStatus(tenancy.room._id);
+
+  if (tenancy.resident) {
+    const resident = await User.findById(tenancy.resident);
+    if (resident) {
+      resident.hostelConnectionStatus = "not_connected";
+      await resident.save();
+    }
+  }
 
   return success(res, "Resident removed successfully");
 });

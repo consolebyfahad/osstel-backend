@@ -12,4 +12,4 @@ export const validateImageDataUrl = (value, fieldName = "image") => {
 };
 
 export const RESIDENT_PROFILE_FIELDS =
-  "name phone userId cnic profileImage cnicFront cnicBack emergencyNumber fatherName fatherPhone";
+  "name phone userId email address dateOfBirth cnic profileImage cnicFront cnicBack emergencyNumber fatherName fatherPhone";

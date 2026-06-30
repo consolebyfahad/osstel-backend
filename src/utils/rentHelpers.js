@@ -59,7 +59,6 @@ export const getEligibleRentMonths = (tenancy, targetYear, now = new Date()) => 
 };
 
 export const syncMonthlyRent = async (hostelId, month, year) => {
-  const dueDate = new Date(year, month - 1, 1);
   const now = new Date();
 
   const tenancies = await Tenancy.find({
@@ -74,29 +73,71 @@ export const syncMonthlyRent = async (hostelId, month, year) => {
     if (!eligibleMonths.includes(month)) continue;
 
     try {
-      const existing = await Payment.findOne({
-        resident: tenancy.resident,
-        room: tenancy.room._id,
-        month,
-        year,
-      });
-
-      if (!existing) {
-        await Payment.create({
-          resident: tenancy.resident,
-          room: tenancy.room._id,
-          hostel: hostelId,
-          amount: getTenancyMonthlyRent(tenancy),
-          month,
-          year,
-          dueDate,
-          status: "pending",
-        });
-      }
+      await ensurePaymentForTenancy(tenancy, month, year);
     } catch (error) {
-      console.error("[syncMonthlyRent] failed for resident:", tenancy.resident, error.message);
+      console.error(
+        "[syncMonthlyRent] failed for tenancy:",
+        tenancy._id,
+        error.message,
+      );
     }
   }
+};
+
+export const findPaymentForTenancy = async (tenancy, month, year) => {
+  const roomId = tenancy.room?._id ?? tenancy.room;
+  const queries = [{ tenancy: tenancy._id, month, year }];
+
+  if (tenancy.resident) {
+    queries.push({ resident: tenancy.resident, room: roomId, month, year });
+  }
+
+  return Payment.findOne({ $or: queries });
+};
+
+export const ensurePaymentForTenancy = async (tenancy, month, year) => {
+  const roomId = tenancy.room?._id ?? tenancy.room;
+  if (!roomId) {
+    throw new Error("Tenancy room is required to create a payment");
+  }
+
+  const dueDate = new Date(year, month - 1, 1);
+  const baseAmount = getTenancyMonthlyRent(tenancy);
+  const hostelId = tenancy.hostel?._id ?? tenancy.hostel;
+
+  let payment = await findPaymentForTenancy(tenancy, month, year);
+
+  if (!payment) {
+    payment = await Payment.create({
+      resident: tenancy.resident || null,
+      tenancy: tenancy._id,
+      room: roomId,
+      hostel: hostelId,
+      baseAmount,
+      charges: [],
+      amount: baseAmount,
+      month,
+      year,
+      dueDate,
+      status: "pending",
+    });
+  } else {
+    if (tenancy.resident && !payment.resident) {
+      payment.resident = tenancy.resident;
+    }
+    if (!payment.tenancy) {
+      payment.tenancy = tenancy._id;
+    }
+    if (payment.baseAmount == null) {
+      payment.baseAmount = baseAmount;
+      if (!payment.charges?.length) {
+        payment.amount = baseAmount;
+      }
+    }
+    await payment.save();
+  }
+
+  return payment;
 };
 
 export const ensureResidentRentRecord = async (residentId, month, year) => {
@@ -116,26 +157,7 @@ export const ensureResidentRentRecord = async (residentId, month, year) => {
     return { tenancy, payment: null };
   }
 
-  const dueDate = new Date(year, month - 1, 1);
-  let payment = await Payment.findOne({
-    resident: residentId,
-    room: tenancy.room._id,
-    month,
-    year,
-  });
-
-  if (!payment) {
-    payment = await Payment.create({
-      resident: residentId,
-      room: tenancy.room._id,
-      hostel: tenancy.hostel._id,
-      amount: getTenancyMonthlyRent(tenancy),
-      month,
-      year,
-      dueDate,
-      status: "pending",
-    });
-  }
+  const payment = await ensurePaymentForTenancy(tenancy, month, year);
 
   return { tenancy, payment };
 };
@@ -264,39 +286,63 @@ export const filterRentRecords = (records, status) => {
   return records.filter(filters[status] || (() => true));
 };
 
-export const formatRentRecord = (payment) => ({
-  id: payment._id,
-  amount: payment.amount,
-  month: payment.month,
-  year: payment.year,
-  status: payment.status,
-  dueDate: payment.dueDate,
-  paymentProof: payment.paymentProof,
-  note: payment.note || null,
-  submittedAt: payment.submittedAt,
-  paidAt: payment.paidAt,
-  reviewedAt: payment.reviewedAt,
-  rejectionReason: payment.rejectionReason,
-  isOverdue:
-    payment.status !== "paid" && new Date(payment.dueDate) < new Date(),
-  resident: payment.resident
-    ? {
-        id: payment.resident._id,
-        name: payment.resident.name,
-        phone: payment.resident.phone,
-      }
-    : null,
-  room: payment.room
-    ? {
-        id: payment.room._id,
-        roomNumber: payment.room.roomNumber,
-        rent: payment.room.rent,
-      }
-    : null,
-  hostel: payment.hostel
-    ? {
-        id: payment.hostel._id,
-        name: payment.hostel.name,
-      }
-    : null,
-});
+export const formatRentRecord = (payment) => {
+  const baseAmount =
+    payment.baseAmount != null ? payment.baseAmount : payment.amount;
+  const charges = (payment.charges ?? []).map((charge) => ({
+    type: charge.type,
+    label: charge.label,
+    units: charge.units ?? null,
+    rate: charge.rate ?? null,
+    amount: charge.amount,
+    meterReadingId: charge.meterReadingId
+      ? String(charge.meterReadingId)
+      : null,
+  }));
+
+  return {
+    id: payment._id,
+    amount: payment.amount,
+    baseAmount,
+    charges,
+    billFinalizedAt: payment.billFinalizedAt ?? null,
+    month: payment.month,
+    year: payment.year,
+    status: payment.status,
+    dueDate: payment.dueDate,
+    paymentProof: payment.paymentProof,
+    note: payment.note || null,
+    submittedAt: payment.submittedAt,
+    paidAt: payment.paidAt,
+    reviewedAt: payment.reviewedAt,
+    rejectionReason: payment.rejectionReason,
+    isOverdue:
+      payment.status !== "paid" && new Date(payment.dueDate) < new Date(),
+    resident: payment.resident
+      ? {
+          id: payment.resident._id,
+          name: payment.resident.name,
+          phone: payment.resident.phone,
+        }
+      : payment.tenancy
+        ? {
+            id: payment.tenancy._id,
+            name: payment.tenancy.name,
+            phone: payment.tenancy.phone,
+          }
+        : null,
+    room: payment.room
+      ? {
+          id: payment.room._id,
+          roomNumber: payment.room.roomNumber,
+          rent: payment.room.rent,
+        }
+      : null,
+    hostel: payment.hostel
+      ? {
+          id: payment.hostel._id,
+          name: payment.hostel.name,
+        }
+      : null,
+  };
+};

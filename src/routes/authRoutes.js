@@ -7,7 +7,7 @@ import {
   refresh,
   register,
 } from "../controllers/authController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, optionalProtect } from "../middleware/authMiddleware.js";
 import { authLimiter } from "../middleware/rateLimiter.js";
 import validate from "../middleware/validate.js";
 import { LIMITS } from "../config/limits.js";
@@ -95,6 +95,51 @@ router.post(
   refresh,
 );
 
-router.post("/logout", protect, logout);
+router.post("/logout", optionalProtect, logout);
+
+router.post(
+  "/resident/signup",
+  authLimiter,
+  [
+    nameValidator("name"),
+    body("phone")
+      .trim()
+      .notEmpty()
+      .withMessage("Phone is required")
+      .isMobilePhone("any")
+      .withMessage("Valid phone is required"),
+    passwordValidator("password"),
+    body("confirmPassword")
+      .notEmpty()
+      .withMessage("Confirm password is required")
+      .custom((value, { req }) => {
+        if (value !== req.body.password) {
+          throw new Error("Passwords do not match");
+        }
+        return true;
+      }),
+  ],
+  validate,
+  (req, res, next) => {
+    req.body.role = "resident";
+    return register(req, res, next);
+  },
+);
+
+router.post(
+  "/resident/login",
+  authLimiter,
+  [
+    body("phone")
+      .trim()
+      .notEmpty()
+      .withMessage("Phone is required")
+      .isMobilePhone("any")
+      .withMessage("Valid phone is required"),
+    loginPasswordValidator(),
+  ],
+  validate,
+  login,
+);
 
 export default router;

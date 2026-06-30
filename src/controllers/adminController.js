@@ -29,6 +29,7 @@ import {
 } from "../utils/subscriptionLifecycleHelpers.js";
 import { getPlanConfig } from "../config/plans.js";
 import { fetchHostelDirectory } from "../utils/hostelDirectoryHelpers.js";
+import { buildCaseInsensitiveRegex } from "../utils/regexHelpers.js";
 import { notifyUser } from "../services/pushNotificationService.js";
 import { hasRealPhone } from "../utils/googleUserHelpers.js";
 
@@ -118,10 +119,11 @@ export const getOwners = asyncHandler(async (req, res) => {
   if (status) filter.status = status;
   if (plan) filter.subscriptionPlan = plan === "standard" ? { $in: ["standard", "basic"] } : plan;
   if (search) {
+    const pattern = buildCaseInsensitiveRegex(search);
     filter.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { phone: { $regex: search, $options: "i" } },
-      { email: { $regex: search, $options: "i" } },
+      { name: pattern },
+      { phone: pattern },
+      { email: pattern },
     ];
   }
 
@@ -591,10 +593,11 @@ export const getSupportRequests = asyncHandler(async (req, res) => {
   if (status !== "all") filter.status = status;
   if (category) filter.category = category;
   if (search) {
+    const pattern = buildCaseInsensitiveRegex(search);
     filter.$or = [
-      { subject: { $regex: search, $options: "i" } },
-      { message: { $regex: search, $options: "i" } },
-      { adminReply: { $regex: search, $options: "i" } },
+      { subject: pattern },
+      { message: pattern },
+      { adminReply: pattern },
     ];
   }
 
@@ -694,11 +697,12 @@ export const getContactInquiries = asyncHandler(async (req, res) => {
   const filter = {};
   if (status !== "all") filter.status = status;
   if (search) {
+    const pattern = buildCaseInsensitiveRegex(search);
     filter.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { email: { $regex: search, $options: "i" } },
-      { phone: { $regex: search, $options: "i" } },
-      { message: { $regex: search, $options: "i" } },
+      { name: pattern },
+      { email: pattern },
+      { phone: pattern },
+      { message: pattern },
     ];
   }
 

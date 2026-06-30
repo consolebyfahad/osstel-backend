@@ -14,20 +14,25 @@ import {
   getRooms,
   updateRoom,
 } from "../controllers/roomController.js";
-import { authorize, protect } from "../middleware/authMiddleware.js";
+import {
+  createRoomMeter,
+  deleteRoomMeter,
+  finalizeRoomBills,
+  getRoomMeterReadings,
+  getRoomMeters,
+  recordRoomMeterReadings,
+  updateRoomMeter,
+} from "../controllers/meterController.js";
+import { authorize, optionalProtect, protect } from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
 import { validateObjectId } from "../middleware/validateObjectId.js";
 import { LIMITS } from "../config/limits.js";
 import { nameValidator, trimmedTextValidator } from "../utils/fieldValidators.js";
+import { validateImageDataUrl } from "../utils/validationHelpers.js";
 
 const router = Router();
 
-router.get(
-  "/discover",
-  protect,
-  authorize("resident"),
-  discoverHostels,
-);
+router.get("/discover", optionalProtect, discoverHostels);
 
 router.get("/", protect, authorize("manager"), getMyHostels);
 router.get("/me", protect, authorize("manager"), getMyHostels);
@@ -54,6 +59,9 @@ router.post(
       .withMessage("Contact phone is required")
       .matches(/^\+?[0-9]{10,15}$/)
       .withMessage("Valid contact phone is required"),
+    body("image")
+      .optional({ values: "null" })
+      .custom((value) => validateImageDataUrl(value, "image")),
   ],
   validate,
   createHostel
@@ -99,6 +107,9 @@ router.patch(
       .trim()
       .matches(/^\+?[0-9]{10,15}$/)
       .withMessage("Valid contact phone is required"),
+    body("image")
+      .optional({ values: "null" })
+      .custom((value) => validateImageDataUrl(value, "image")),
   ],
   validate,
   updateHostel
@@ -185,6 +196,107 @@ router.delete(
   validateObjectId("hostelId"),
   validateObjectId("roomId"),
   deleteRoom
+);
+
+router.get(
+  "/:hostelId/rooms/:roomId/meters",
+  protect,
+  authorize("manager"),
+  validateObjectId("hostelId"),
+  validateObjectId("roomId"),
+  getRoomMeters,
+);
+
+router.post(
+  "/:hostelId/rooms/:roomId/meters",
+  protect,
+  authorize("manager"),
+  validateObjectId("hostelId"),
+  validateObjectId("roomId"),
+  [
+    body("name").trim().notEmpty().withMessage("Meter name is required"),
+    body("unitLabel").optional().trim().notEmpty(),
+    body("ratePerUnit")
+      .isFloat({ min: 0 })
+      .withMessage("ratePerUnit must be a non-negative number"),
+    body("lastReading")
+      .optional({ values: "null" })
+      .isFloat({ min: 0 })
+      .withMessage("lastReading must be a non-negative number"),
+  ],
+  validate,
+  createRoomMeter,
+);
+
+router.patch(
+  "/:hostelId/rooms/:roomId/meters/:meterId",
+  protect,
+  authorize("manager"),
+  validateObjectId("hostelId"),
+  validateObjectId("roomId"),
+  validateObjectId("meterId"),
+  [
+    body("name").optional().trim().notEmpty(),
+    body("unitLabel").optional().trim().notEmpty(),
+    body("ratePerUnit").optional().isFloat({ min: 0 }),
+    body("lastReading").optional().isFloat({ min: 0 }),
+    body("isActive").optional().isBoolean(),
+  ],
+  validate,
+  updateRoomMeter,
+);
+
+router.delete(
+  "/:hostelId/rooms/:roomId/meters/:meterId",
+  protect,
+  authorize("manager"),
+  validateObjectId("hostelId"),
+  validateObjectId("roomId"),
+  validateObjectId("meterId"),
+  deleteRoomMeter,
+);
+
+router.get(
+  "/:hostelId/rooms/:roomId/meter-readings",
+  protect,
+  authorize("manager"),
+  validateObjectId("hostelId"),
+  validateObjectId("roomId"),
+  getRoomMeterReadings,
+);
+
+router.post(
+  "/:hostelId/rooms/:roomId/meter-readings",
+  protect,
+  authorize("manager"),
+  validateObjectId("hostelId"),
+  validateObjectId("roomId"),
+  [
+    body("month").isInt({ min: 1, max: 12 }),
+    body("year").isInt({ min: 2000 }),
+    body("readings").isArray({ min: 1 }),
+    body("readings.*.meterId").notEmpty(),
+    body("readings.*.currentReading")
+      .isFloat({ min: 0 })
+      .withMessage("currentReading must be non-negative"),
+  ],
+  validate,
+  recordRoomMeterReadings,
+);
+
+router.post(
+  "/:hostelId/rooms/:roomId/finalize-bills",
+  protect,
+  authorize("manager"),
+  validateObjectId("hostelId"),
+  validateObjectId("roomId"),
+  [
+    body("month").isInt({ min: 1, max: 12 }),
+    body("year").isInt({ min: 2000 }),
+    body("extraChargesByResident").optional().isObject(),
+  ],
+  validate,
+  finalizeRoomBills,
 );
 
 export default router;

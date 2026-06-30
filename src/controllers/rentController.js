@@ -60,7 +60,7 @@ const getPaymentForUser = async (paymentId, user) => {
     if (payment.hostel.manager.toString() !== user._id.toString()) {
       throw new AppError("Not authorized for this hostel", 403);
     }
-  } else if (payment.resident._id.toString() !== user._id.toString()) {
+  } else if (payment.resident?._id?.toString() !== user._id.toString()) {
     throw new AppError("Not authorized for this payment", 403);
   }
 
@@ -125,6 +125,7 @@ export const getRentCollection = asyncHandler(async (req, res) => {
     year: targetYear,
   })
     .populate("resident", "name phone")
+    .populate("tenancy", "name phone")
     .populate("room", "roomNumber")
     .sort({ createdAt: -1 })
     .lean();
@@ -182,8 +183,11 @@ export const submitRentPayment = asyncHandler(async (req, res) => {
 export const submitRentForReview = submitRentPayment;
 
 export const updateRentStatus = asyncHandler(async (req, res) => {
-  assertHasFeature(req.user, PLAN_FEATURES.payment_proof);
   const { status, rejectionReason } = req.body;
+
+  if (status === "rejected") {
+    assertHasFeature(req.user, PLAN_FEATURES.payment_proof);
+  }
   const payment = await getPaymentForUser(req.params.id, req.user);
   const record = await applyRentStatusUpdate(payment, {
     status,
@@ -225,15 +229,15 @@ const applyRentStatusUpdate = async (payment, { status, rejectionReason, reviewe
     throw new AppError("Invalid status. Use paid, approved, or rejected", 400);
   }
 
-  const residentId = payment.resident._id ?? payment.resident;
-  if (record.status === "paid") {
+  const residentId = payment.resident?._id ?? payment.resident;
+  if (record.status === "paid" && residentId) {
     void notifyUser(residentId, {
       title: "Rent approved",
       body: "Your rent payment has been approved.",
       type: "rent_approved",
       data: { paymentId: payment._id.toString(), url: RENT_NOTIFICATION_URL },
     });
-  } else if (record.status === "rejected") {
+  } else if (record.status === "rejected" && residentId) {
     void notifyUser(residentId, {
       title: "Rent rejected",
       body: record.rejectionReason || "Your rent payment was rejected.",

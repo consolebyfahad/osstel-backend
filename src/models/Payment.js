@@ -1,11 +1,36 @@
 import mongoose from "mongoose";
 
+const rentChargeSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["meter", "extra"],
+      required: true,
+    },
+    label: { type: String, required: true, trim: true },
+    units: { type: Number, min: 0, default: null },
+    rate: { type: Number, min: 0, default: null },
+    amount: { type: Number, required: true, min: 0 },
+    meterReadingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MeterReading",
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
 const paymentSchema = new mongoose.Schema(
   {
     resident: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      default: null,
+    },
+    tenancy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenancy",
+      default: null,
     },
     room: {
       type: mongoose.Schema.Types.ObjectId,
@@ -17,7 +42,10 @@ const paymentSchema = new mongoose.Schema(
       ref: "Hostel",
       required: true,
     },
+    baseAmount: { type: Number, min: 0, default: null },
+    charges: { type: [rentChargeSchema], default: [] },
     amount: { type: Number, required: true, min: 0 },
+    billFinalizedAt: { type: Date, default: null },
     month: { type: Number, required: true, min: 1, max: 12 },
     year: { type: Number, required: true },
     status: {
@@ -43,6 +71,23 @@ const paymentSchema = new mongoose.Schema(
 );
 
 paymentSchema.index({ hostel: 1, month: 1, year: 1 });
-paymentSchema.index({ resident: 1, room: 1, month: 1, year: 1 }, { unique: true });
+paymentSchema.index({ hostel: 1, status: 1, month: 1, year: 1 });
+paymentSchema.index({ status: 1, month: 1, year: 1 });
+paymentSchema.index(
+  { tenancy: 1, month: 1, year: 1 },
+  { unique: true, sparse: true },
+);
+paymentSchema.index(
+  { resident: 1, room: 1, month: 1, year: 1 },
+  { unique: true, sparse: true },
+);
+
+paymentSchema.pre("validate", function validatePaymentResidentOrTenancy(next) {
+  if (!this.resident && !this.tenancy) {
+    next(new Error("Payment requires either resident or tenancy"));
+    return;
+  }
+  next();
+});
 
 export default mongoose.model("Payment", paymentSchema);

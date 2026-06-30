@@ -1,3 +1,4 @@
+import JoinRequest from "../models/JoinRequest.js";
 import Hostel from "../models/Hostel.js";
 import Tenancy from "../models/Tenancy.js";
 import User from "../models/User.js";
@@ -33,12 +34,17 @@ const buildProfile = async (user) => {
     fatherName: user.fatherName || null,
     fatherPhone: user.fatherPhone || null,
     role: user.role,
+    hostelConnectionStatus:
+      user.role === "resident"
+        ? user.hostelConnectionStatus || "not_connected"
+        : undefined,
     ...formatSubscriptionForClient(user),
     hostels: [],
     hostel: null,
     room: null,
     tenancyId: null,
     checkInDate: null,
+    securityDeposit: null,
   };
 
   if (user.role === "manager") {
@@ -68,6 +74,8 @@ const buildProfile = async (user) => {
     if (tenancy) {
       profile.tenancyId = tenancy._id;
       profile.checkInDate = tenancy.checkInDate;
+      profile.securityDeposit = tenancy.securityDeposit ?? 0;
+      profile.hostelConnectionStatus = "active";
       profile.hostel = {
         id: tenancy.hostel._id,
         name: tenancy.hostel.name,
@@ -88,6 +96,33 @@ const buildProfile = async (user) => {
       const planContext = await getResidentPlanContext(user._id);
       profile.managerPlan = planContext.managerPlan;
       profile.planFeatures = planContext.planFeatures;
+
+      if (user.hostelConnectionStatus !== "active") {
+        user.hostelConnectionStatus = "active";
+        await user.save();
+      }
+    } else {
+      const pendingJoin = await JoinRequest.findOne({
+        resident: user._id,
+        status: "pending",
+      })
+        .populate("hostel", "name hostelCode")
+        .lean();
+
+      if (pendingJoin?.hostel) {
+        profile.hostelConnectionStatus = "pending";
+        profile.pendingJoinRequest = {
+          id: String(pendingJoin._id),
+          hostel: {
+            id: String(pendingJoin.hostel._id),
+            name: pendingJoin.hostel.name,
+            hostelCode: pendingJoin.hostel.hostelCode,
+          },
+        };
+      } else if (user.hostelConnectionStatus !== "not_connected") {
+        user.hostelConnectionStatus = "not_connected";
+        await user.save();
+      }
     }
   }
 

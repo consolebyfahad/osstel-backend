@@ -3,6 +3,7 @@ import { body } from "express-validator";
 import {
   addResident,
   getResidents,
+  lookupResidentByUserId,
   removeResident,
   sendResidentRentAlert,
   updateResident,
@@ -12,6 +13,7 @@ import validate from "../middleware/validate.js";
 import { validateObjectId } from "../middleware/validateObjectId.js";
 import { LIMITS } from "../config/limits.js";
 import { nameValidator } from "../utils/fieldValidators.js";
+import { validateImageDataUrl } from "../utils/validationHelpers.js";
 
 const router = Router();
 
@@ -36,6 +38,20 @@ const imageValidator = (field) =>
     .custom((value) => validateImageDataUrl(value, field));
 
 const residentProfileValidators = [
+  body("address")
+    .optional({ values: "null" })
+    .trim()
+    .isLength({ max: LIMITS.ADDRESS_MAX })
+    .withMessage(`Address must be under ${LIMITS.ADDRESS_MAX} characters`),
+  body("email")
+    .optional({ values: "null" })
+    .trim()
+    .isEmail()
+    .withMessage("Valid email is required"),
+  body("dateOfBirth")
+    .optional({ values: "null" })
+    .isISO8601()
+    .withMessage("dateOfBirth must be a valid date"),
   imageValidator("profileImage"),
   imageValidator("cnicFront"),
   imageValidator("cnicBack"),
@@ -50,6 +66,13 @@ const residentProfileValidators = [
 
 router.get("/", protect, authorize("manager"), getResidents);
 
+router.get(
+  "/lookup/:userId",
+  protect,
+  authorize("manager"),
+  lookupResidentByUserId,
+);
+
 router.post(
   "/",
   protect,
@@ -59,11 +82,15 @@ router.post(
     nameValidator("name"),
     phoneValidator("phone", true),
     body("cnic")
+      .optional({ values: "null" })
       .trim()
-      .notEmpty()
-      .withMessage("CNIC is required")
       .matches(/^[0-9]{5}-[0-9]{7}-[0-9]$/)
       .withMessage("CNIC must be in format 12345-1234567-1"),
+    body("residentUserId")
+      .optional({ values: "null" })
+      .trim()
+      .matches(/^[a-zA-Z0-9]{4,20}$/)
+      .withMessage("residentUserId must be 4-20 alphanumeric characters"),
     body("roomNumber").trim().notEmpty().withMessage("Room number is required"),
     body("monthlyRent")
       .optional({ values: "null" })
@@ -76,7 +103,7 @@ router.post(
     ...residentProfileValidators,
   ],
   validate,
-  addResident
+  addResident,
 );
 
 router.put(
@@ -108,7 +135,7 @@ router.put(
     ...residentProfileValidators,
   ],
   validate,
-  updateResident
+  updateResident,
 );
 
 router.post(
@@ -125,7 +152,7 @@ router.post(
       .withMessage("message must be under 300 characters"),
   ],
   validate,
-  sendResidentRentAlert
+  sendResidentRentAlert,
 );
 
 router.delete(
@@ -133,7 +160,7 @@ router.delete(
   protect,
   authorize("manager"),
   validateObjectId("id"),
-  removeResident
+  removeResident,
 );
 
 export default router;
